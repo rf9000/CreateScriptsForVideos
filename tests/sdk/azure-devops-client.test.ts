@@ -5,9 +5,14 @@ import {
   adoFetch,
   adoFetchWithRetry,
   queryWorkItems,
+  queryWorkItemsByTag,
   getWorkItem,
   getWorkItemsBatch,
   updateWorkItemField,
+  getWorkItemComments,
+  addWorkItemComment,
+  uploadAttachment,
+  linkAttachment,
 } from '../../src/sdk/azure-devops-client.ts';
 
 const originalFetch = globalThis.fetch;
@@ -25,6 +30,14 @@ function mockConfig(): AppConfig {
     promptPath: './prompt.md',
     stateDir: '.state',
     dryRun: false,
+    repoIds: [],
+    createScriptTag: 'create script',
+    continiaBankingPath: './continia-banking',
+    workspaceOutputDir: './output',
+    pteOutputDir: './output',
+    lspPluginPath: '',
+    agentMaxTurns: 120,
+    maxProcessAttempts: 3,
   };
 }
 
@@ -278,6 +291,106 @@ describe('updateWorkItemField', () => {
     expect(body).toEqual([
       { op: 'add', path: '/fields/Custom.Field', value: 'New value' },
     ]);
+  });
+});
+
+describe('queryWorkItemsByTag', () => {
+  test('builds a WIQL query scoped to the project and tag', async () => {
+    setMockFetch({ workItems: [{ id: 7, url: 'u' }] });
+    const config = mockConfig();
+
+    const result = await queryWorkItemsByTag(config);
+
+    expect(result).toEqual([7]);
+    const init = mockFn.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { query: string };
+    expect(body.query).toContain("[System.TeamProject] = 'my-project'");
+    expect(body.query).toContain("[System.Tags] CONTAINS 'create script'");
+  });
+});
+
+describe('getWorkItemComments', () => {
+  test('returns comment texts and uses the comments endpoint', async () => {
+    setMockFetch({
+      totalCount: 2,
+      count: 2,
+      comments: [
+        { id: 1, text: 'first comment' },
+        { id: 2, text: 'second comment' },
+      ],
+    });
+    const config = mockConfig();
+
+    const result = await getWorkItemComments(config, 100);
+
+    expect(result).toEqual(['first comment', 'second comment']);
+    const url = mockFn.mock.calls[0]![0] as string;
+    expect(url).toContain('wit/workItems/100/comments');
+  });
+
+  test('returns empty array when there are no comments', async () => {
+    setMockFetch({ totalCount: 0, count: 0, comments: [] });
+    const result = await getWorkItemComments(mockConfig(), 100);
+    expect(result).toEqual([]);
+  });
+});
+
+describe('addWorkItemComment', () => {
+  test('POSTs the comment text to the comments endpoint', async () => {
+    setMockFetch({ id: 5, text: 'hello' });
+    const config = mockConfig();
+
+    await addWorkItemComment(config, 100, 'hello');
+
+    const call = mockFn.mock.calls[0]!;
+    const url = call[0] as string;
+    const init = call[1] as RequestInit;
+    expect(url).toContain('wit/workItems/100/comments');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string) as { text: string };
+    expect(body.text).toBe('hello');
+  });
+});
+
+describe('uploadAttachment', () => {
+  test('POSTs raw content to the attachments endpoint and returns id+url', async () => {
+    setMockFetch({ id: 'abc-123', url: 'https://dev.azure.com/att/abc-123' });
+    const config = mockConfig();
+
+    const result = await uploadAttachment(config, 'script.md', '# Recording Script');
+
+    expect(result).toEqual({ id: 'abc-123', url: 'https://dev.azure.com/att/abc-123' });
+    const call = mockFn.mock.calls[0]!;
+    const url = call[0] as string;
+    const init = call[1] as RequestInit;
+    expect(url).toContain('wit/attachments?fileName=script.md');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe('# Recording Script');
+  });
+});
+
+describe('linkAttachment', () => {
+  test('PATCHes an AttachedFile relation with a comment', async () => {
+    setMockFetch({ id: 100, fields: {}, rev: 5, url: 'u' });
+    const config = mockConfig();
+
+    await linkAttachment(config, 100, 'https://dev.azure.com/att/abc-123', 'Recording script');
+
+    const call = mockFn.mock.calls[0]!;
+    const init = call[1] as RequestInit;
+    expect(init.method).toBe('PATCH');
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Content-Type']).toBe('application/json-patch+json');
+    const body = JSON.parse(init.body as string) as Array<{
+      op: string;
+      path: string;
+      value: { rel: string; url: string; attributes: { comment: string } };
+    }>;
+    expect(body[0]!.op).toBe('add');
+    expect(body[0]!.path).toBe('/relations/-');
+    expect(body[0]!.value.rel).toBe('AttachedFile');
+    expect(body[0]!.value.url).toBe('https://dev.azure.com/att/abc-123');
+    expect(body[0]!.value.attributes.comment).toBe('Recording script');
   });
 });
 

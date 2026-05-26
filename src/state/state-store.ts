@@ -7,10 +7,15 @@ export class StateStore {
   private state: ProcessedState;
   private processedSet: Set<number>;
 
+  private attempts: Map<number, number>;
+
   constructor(stateDir: string) {
     this.filePath = join(stateDir, 'processed-items.json');
     this.state = this.load();
     this.processedSet = new Set(this.state.processedItemIds);
+    this.attempts = new Map(
+      Object.entries(this.state.attempts ?? {}).map(([id, n]) => [Number(id), n]),
+    );
   }
 
   private load(): ProcessedState {
@@ -37,7 +42,20 @@ export class StateStore {
   save(): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
     this.state.lastRunAt = new Date().toISOString();
+    this.state.attempts = Object.fromEntries(this.attempts);
     writeFileSync(this.filePath, JSON.stringify(this.state, null, 2), 'utf-8');
+  }
+
+  /** Number of times processing has been attempted for an item. */
+  attemptCount(itemId: number): number {
+    return this.attempts.get(itemId) ?? 0;
+  }
+
+  /** Record one more attempt for an item and return the new count. */
+  recordAttempt(itemId: number): number {
+    const next = this.attemptCount(itemId) + 1;
+    this.attempts.set(itemId, next);
+    return next;
   }
 
   isProcessed(itemId: number): boolean {
@@ -52,8 +70,9 @@ export class StateStore {
   }
 
   reset(): void {
-    this.state = { processedItemIds: [], lastRunAt: '' };
+    this.state = { processedItemIds: [], lastRunAt: '', attempts: {} };
     this.processedSet = new Set();
+    this.attempts = new Map();
     this.save();
   }
 

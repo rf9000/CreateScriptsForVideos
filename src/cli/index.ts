@@ -7,10 +7,10 @@ import { getWorkItem } from '../sdk/azure-devops-client.ts';
 import { processItem } from '../services/processor.ts';
 
 const HELP = `
-DevOps Pull Template
+Create Scripts For Videos — Azure DevOps work-item driven demo script generator
 
 Usage:
-  devops-pull <command>
+  create-scripts <command>
 
 Commands:
   watch            Start the long-running watcher (polls every N minutes)
@@ -20,16 +20,23 @@ Commands:
   help             Show this help message
 
 Options:
-  --dry-run        Read-only mode: generate but skip Azure DevOps writes
+  --dry-run        Read-only mode: run the orchestrator but skip Azure DevOps writes
 
 Environment variables:
   AZURE_DEVOPS_PAT          Azure DevOps personal access token (required)
   AZURE_DEVOPS_ORG          Azure DevOps organization name (required)
   AZURE_DEVOPS_PROJECT      Azure DevOps project name (required)
-  AZURE_DEVOPS_WIQL_QUERY   WIQL query to find items (optional, has default)
-  POLL_INTERVAL_MINUTES     Polling interval (default: 15)
+  AZURE_DEVOPS_REPO_IDS     Comma-separated repo GUIDs to scope work items (optional)
+  CREATE_SCRIPT_TAG         Tag that opts items in (default: "create script")
+  CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
+  WORKSPACE_OUTPUT_DIR      Writable dir for the generated .md script (default: ./output)
+  PTE_OUTPUT_DIR            Writable dir for the generated PTE (default: WORKSPACE_OUTPUT_DIR)
+  LSP_PLUGIN_PATH           Local path to the LSP plugin loaded into the agent
+  POLL_INTERVAL_MINUTES     Polling interval (default: 5)
+  AGENT_MAX_TURNS           Max agentic turns per item (default: 120)
+  MAX_PROCESS_ATTEMPTS      Attempts before giving up on an item (default: 3)
   CLAUDE_MODEL              Claude model to use (default: claude-sonnet-4-6)
-  PROMPT_PATH               Path to prompt file (default: .claude/commands/do-process-item.md)
+  PROMPT_PATH               Orchestration prompt (default: .claude/commands/create-script.md)
   STATE_DIR                 State directory (default: .state)
 `.trim();
 
@@ -51,7 +58,10 @@ switch (command) {
     if (dryRun) console.log('[DRY RUN] No writes will be made to Azure DevOps\n');
     const stateStore = new StateStore(config.stateDir);
     const result = await runPollCycle(config, stateStore);
-    console.log(`Done: ${result.processed} processed, ${result.errors} errors`);
+    console.log(
+      `Done: ${result.processed} processed, ${result.errors} errors, ` +
+        `$${result.costUsd.toFixed(4)} total cost`,
+    );
     break;
   }
 
@@ -67,7 +77,10 @@ switch (command) {
     console.log(`[DRY RUN] Testing processing for work item #${itemIdArg}\n`);
     const item = await getWorkItem(config, Number(itemIdArg));
     const result = await processItem(config, item);
-    console.log(`\nDone: ${result.processed ? 'processed' : 'failed'}${result.error ? ` (${result.error})` : ''}`);
+    console.log(
+      `\nDone: ${result.processed ? 'processed' : 'failed'}` +
+        `${result.error ? ` (${result.error})` : ''} — $${(result.costUsd ?? 0).toFixed(4)}`,
+    );
     break;
   }
 

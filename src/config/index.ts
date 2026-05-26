@@ -8,11 +8,27 @@ const envSchema = z.object({
   AZURE_DEVOPS_ORG: z.string().min(1, "AZURE_DEVOPS_ORG is required"),
   AZURE_DEVOPS_PROJECT: z.string().min(1, "AZURE_DEVOPS_PROJECT is required"),
   AZURE_DEVOPS_WIQL_QUERY: z.string().default(DEFAULT_WIQL),
-  POLL_INTERVAL_MINUTES: z.coerce.number().default(15),
+  AZURE_DEVOPS_REPO_IDS: z.string().default(""),
+  CREATE_SCRIPT_TAG: z.string().default("create script"),
+  CONTINIA_BANKING_PATH: z.string().default("./continia-banking"),
+  WORKSPACE_OUTPUT_DIR: z.string().default("./output"),
+  PTE_OUTPUT_DIR: z.string().optional(),
+  LSP_PLUGIN_PATH: z.string().default(""),
+  POLL_INTERVAL_MINUTES: z.coerce.number().default(5),
+  AGENT_MAX_TURNS: z.coerce.number().default(120),
+  MAX_PROCESS_ATTEMPTS: z.coerce.number().default(3),
   CLAUDE_MODEL: z.string().default("claude-sonnet-4-6"),
-  PROMPT_PATH: z.string().default(".claude/commands/do-process-item.md"),
+  PROMPT_PATH: z.string().default(".claude/commands/create-script.md"),
   STATE_DIR: z.string().default(".state"),
 });
+
+/** Parse a comma-separated env value into a trimmed, non-empty list. */
+function parseList(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
@@ -27,6 +43,7 @@ export function loadConfig(
   }
 
   const parsed = result.data;
+  const workspaceOutputDir = parsed.WORKSPACE_OUTPUT_DIR;
 
   return {
     org: parsed.AZURE_DEVOPS_ORG,
@@ -39,5 +56,13 @@ export function loadConfig(
     promptPath: parsed.PROMPT_PATH,
     stateDir: parsed.STATE_DIR,
     dryRun: false,
+    repoIds: parseList(parsed.AZURE_DEVOPS_REPO_IDS),
+    createScriptTag: parsed.CREATE_SCRIPT_TAG,
+    continiaBankingPath: parsed.CONTINIA_BANKING_PATH,
+    workspaceOutputDir,
+    pteOutputDir: parsed.PTE_OUTPUT_DIR ?? workspaceOutputDir,
+    lspPluginPath: parsed.LSP_PLUGIN_PATH,
+    agentMaxTurns: parsed.AGENT_MAX_TURNS,
+    maxProcessAttempts: parsed.MAX_PROCESS_ATTEMPTS,
   };
 }

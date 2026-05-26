@@ -85,6 +85,29 @@ describe('StateStore', () => {
     expect(store2.processedCount).toBe(0);
   });
 
+  it('attemptCount defaults to 0 for unseen items', () => {
+    const store = new StateStore(makeTmpDir());
+    expect(store.attemptCount(7)).toBe(0);
+  });
+
+  it('recordAttempt increments and returns the new count', () => {
+    const store = new StateStore(makeTmpDir());
+    expect(store.recordAttempt(7)).toBe(1);
+    expect(store.recordAttempt(7)).toBe(2);
+    expect(store.attemptCount(7)).toBe(2);
+  });
+
+  it('persists attempt counts across reloads', () => {
+    const dir = makeTmpDir();
+    const store = new StateStore(dir);
+    store.recordAttempt(7);
+    store.recordAttempt(7);
+    store.save();
+
+    const store2 = new StateStore(dir);
+    expect(store2.attemptCount(7)).toBe(2);
+  });
+
   it('processedCount returns the correct count', () => {
     const dir = makeTmpDir();
     const store = new StateStore(dir);
