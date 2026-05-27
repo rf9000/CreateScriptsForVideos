@@ -1,0 +1,7 @@
+# Shell scripts and Docker files run in Linux containers — force LF so the
+# shebang and bash parsing don't break with CRLF (/bin/bash^M: bad interpreter).
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose.yml text eol=lf

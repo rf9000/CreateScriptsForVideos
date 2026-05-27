@@ -1,0 +1,35 @@
+# Lives on the VM under ~/teams/continia-banking/ alongside the investigate stack.
+# You can either keep this as its own file (docker compose -f) or paste the
+# `create-scripts-for-videos` service block into the existing docker-compose.yml —
+# it shares the same continia-banking repo mount and ~/.claude auth.
+services:
+  create-scripts-for-videos:
+    build:
+      context: ./CreateScriptsForVideos
+      dockerfile: Dockerfile
+    env_file: .env.create-scripts          # secrets: AZURE_DEVOPS_PAT, CONTINIA_API_TOKEN
+    environment:
+      # Container-side paths (do not put these in .env.create-scripts — they are layout, not secrets)
+      CONTINIA_BANKING_PATH: /repos/continia-banking
+      WORKSPACE_OUTPUT_DIR: /app/output
+      PTE_OUTPUT_DIR: /app/output          # MUST be writable and NOT inside continia-banking
+      # CONTINIA_ALC_PATH: /opt/al/alc      # TODO: set once a Linux alc is provisioned (see Dockerfile)
+      # LSP_PLUGIN_PATH: /opt/al-lsp-plugin # TODO: set if the LSP plugin is mounted (below)
+    volumes:
+      # Claude Code OAuth credentials, shared with the host (re-auth on the host as needed)
+      - /home/azureuser/.claude:/home/claude/.claude
+      # continia-banking: READ-ONLY navigation/LSP/symbol source
+      - /home/azureuser/repos/continia-banking:/repos/continia-banking:ro
+      # continia-linux binary, provisioned on the host (chmod +x there)
+      - /home/azureuser/tools/continia-linux:/opt/continia/continia:ro
+      # Linux alc + LSP plugin — uncomment and adjust once provisioned
+      # - /home/azureuser/tools/al-alc:/opt/al:ro
+      # - /home/azureuser/tools/al-lsp-plugin:/opt/al-lsp-plugin:ro
+      # Persisted state and generated output
+      - create-scripts-state:/app/.state
+      - create-scripts-output:/app/output
+    restart: unless-stopped
+
+volumes:
+  create-scripts-state:
+  create-scripts-output:
