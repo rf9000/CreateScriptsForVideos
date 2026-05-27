@@ -9,6 +9,10 @@ Ensure a running BC environment is available and configured for development.
 
 The CLI is located at `.tools/continia.exe`.
 
+**Authentication:** pass the API token via the global `--token` option, read from the
+`CONTINIA_API_TOKEN` environment variable (e.g. `continia --token "$CONTINIA_API_TOKEN" env list --json`).
+No VS Code dependency.
+
 ## Process
 
 1. List running environments: `continia env list --status running --json`

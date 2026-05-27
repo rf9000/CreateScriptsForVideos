@@ -22,6 +22,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     repoIds: [],
     createScriptTag: 'create script',
     continiaBankingPath: './continia-banking',
+    continiaApiToken: '',
     workspaceOutputDir: './output',
     pteOutputDir: './output',
     lspPluginPath: '',
