@@ -296,17 +296,38 @@ describe('updateWorkItemField', () => {
 });
 
 describe('queryWorkItemsByTag', () => {
-  test('builds a WIQL query scoped to the project and tag', async () => {
-    setMockFetch({ workItems: [{ id: 7, url: 'u' }] });
+  test('narrows via WIQL (no TeamProject clause) then exact-matches the tag', async () => {
+    setSequentialMockFetch(
+      { body: { workItems: [{ id: 7 }, { id: 8 }] } }, // WIQL candidates
+      {
+        body: {
+          value: [
+            { id: 7, fields: { 'System.Tags': 'create script; other' } },
+            { id: 8, fields: { 'System.Tags': 'create scripts' } }, // substring-only
+          ],
+        },
+      },
+    );
     const config = mockConfig();
 
     const result = await queryWorkItemsByTag(config);
 
+    // #8 is dropped: CONTAINS matched the substring, but exact match rejects it.
     expect(result).toEqual([7]);
-    const init = mockFn.mock.calls[0]![1] as RequestInit;
-    const body = JSON.parse(init.body as string) as { query: string };
-    expect(body.query).toContain("[System.TeamProject] = 'my-project'");
+    const wiqlInit = mockFn.mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(wiqlInit.body as string) as { query: string };
+    expect(body.query).not.toContain('System.TeamProject');
     expect(body.query).toContain("[System.Tags] CONTAINS 'create script'");
+  });
+
+  test('returns empty (and skips the tag fetch) when there are no candidates', async () => {
+    setMockFetch({ workItems: [] });
+    const config = mockConfig();
+
+    const result = await queryWorkItemsByTag(config);
+
+    expect(result).toEqual([]);
+    expect(mockFn.mock.calls.length).toBe(1);
   });
 });
 

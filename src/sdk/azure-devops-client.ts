@@ -130,15 +130,43 @@ export async function updateWorkItemField(
   });
 }
 
-/** Build a WIQL query scoped to the configured project and `create script` tag. */
+/**
+ * Find work items carrying the configured tag, scoped to the project via the
+ * request URL (NOT a `[System.TeamProject]` clause — that's fragile and can
+ * zero out results if config.project doesn't exactly match the stored value).
+ *
+ * `[System.Tags] CONTAINS` is substring-based, so the WIQL only narrows to
+ * candidates; we batch-fetch `System.Tags` and exact-match per tag in code.
+ */
 export async function queryWorkItemsByTag(
   config: AppConfig,
 ): Promise<number[]> {
   const wiql =
     `SELECT [System.Id] FROM workitems ` +
-    `WHERE [System.TeamProject] = '${config.project}' ` +
-    `AND [System.Tags] CONTAINS '${config.createScriptTag}'`;
-  return queryWorkItems(config, wiql);
+    `WHERE [System.Tags] CONTAINS '${config.createScriptTag}'`;
+  const candidateIds = await queryWorkItems(config, wiql);
+  if (candidateIds.length === 0) return [];
+
+  const tagLower = config.createScriptTag.toLowerCase();
+  const taggedIds: number[] = [];
+  const chunkSize = 200;
+
+  for (let i = 0; i < candidateIds.length; i += chunkSize) {
+    const chunk = candidateIds.slice(i, i + chunkSize);
+    const path = `wit/workitems?ids=${chunk.join(',')}&fields=System.Tags&api-version=7.0`;
+    const data = await adoFetchWithRetry<{
+      value: Array<{ id: number; fields: Record<string, unknown> }>;
+    }>(config, path);
+
+    for (const item of data.value ?? []) {
+      const tags = String(item.fields['System.Tags'] ?? '');
+      if (tags.split(';').some((t) => t.trim().toLowerCase() === tagLower)) {
+        taggedIds.push(item.id);
+      }
+    }
+  }
+
+  return taggedIds;
 }
 
 interface CommentsResponse {
