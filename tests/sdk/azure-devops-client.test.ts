@@ -39,6 +39,7 @@ function mockConfig(): AppConfig {
     pteOutputDir: './output',
     lspPluginPath: '',
     agentMaxTurns: 120,
+    outputRetentionDays: 14,
   };
 }
 

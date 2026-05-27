@@ -27,6 +27,8 @@ export interface AppConfig {
   lspPluginPath: string;
   /** Max agentic turns for the orchestrator agent. */
   agentMaxTurns: number;
+  /** Days to keep generated output/<id>/ folders before the watcher prunes them. 0 = never prune. */
+  outputRetentionDays: number;
 }
 
 /** A relation (link) on a work item, e.g. an ArtifactLink to a Git branch/commit. */

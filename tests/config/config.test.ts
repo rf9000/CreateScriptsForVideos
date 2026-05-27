@@ -135,6 +135,16 @@ describe("loadConfig", () => {
       expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "200" }).agentMaxTurns).toBe(200);
     });
 
+    it("defaults outputRetentionDays to 14", () => {
+      const config = loadConfig(validEnv);
+      expect(config.outputRetentionDays).toBe(14);
+    });
+
+    it("reads a custom OUTPUT_RETENTION_DAYS", () => {
+      const config = loadConfig({ ...validEnv, OUTPUT_RETENTION_DAYS: "0" });
+      expect(config.outputRetentionDays).toBe(0);
+    });
+
     it("reads LSP_PLUGIN_PATH", () => {
       const config = loadConfig({ ...validEnv, LSP_PLUGIN_PATH: "/plugins/lsp" });
       expect(config.lspPluginPath).toBe("/plugins/lsp");

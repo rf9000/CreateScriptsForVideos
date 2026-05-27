@@ -5,6 +5,7 @@ import type {
 } from '../types/index.ts';
 import * as sdk from '../sdk/azure-devops-client.ts';
 import * as proc from './processor.ts';
+import * as pruner from './pruner.ts';
 
 export interface WatcherDeps {
   fetchItems: (config: AppConfig) => Promise<WorkItemResponse[]>;
@@ -12,6 +13,8 @@ export interface WatcherDeps {
     config: AppConfig,
     item: WorkItemResponse,
   ) => Promise<ItemProcessResult>;
+  /** Delete aged per-item output folders. Returns the count pruned. */
+  pruneOutputs: (config: AppConfig) => number;
 }
 
 async function defaultFetchItems(config: AppConfig): Promise<WorkItemResponse[]> {
@@ -23,6 +26,7 @@ async function defaultFetchItems(config: AppConfig): Promise<WorkItemResponse[]>
 const defaultDeps: WatcherDeps = {
   fetchItems: defaultFetchItems,
   processItem: proc.processItem,
+  pruneOutputs: pruner.pruneOldOutputs,
 };
 
 function log(message: string): void {
@@ -57,6 +61,11 @@ export async function runPollCycle(
       log(`  Item #${item.id}: Fatal error — ${err}`);
       totalErrors++;
     }
+  }
+
+  if (config.outputRetentionDays > 0) {
+    const prunedCount = deps.pruneOutputs(config);
+    if (prunedCount > 0) log(`  Pruned ${prunedCount} aged output folder(s)`);
   }
 
   return { processed: totalProcessed, errors: totalErrors, costUsd: totalCostUsd };
