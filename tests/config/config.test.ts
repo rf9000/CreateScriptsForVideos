@@ -41,7 +41,6 @@ describe("loadConfig", () => {
     expect(config.pollIntervalMinutes).toBe(5);
     expect(config.claudeModel).toBe("claude-sonnet-4-6");
     expect(config.promptPath).toBe(".claude/commands/create-script.md");
-    expect(config.stateDir).toBe(".state");
   });
 
   it("uses default WIQL query when not provided", () => {
@@ -66,7 +65,6 @@ describe("loadConfig", () => {
       POLL_INTERVAL_MINUTES: "30",
       CLAUDE_MODEL: "claude-opus-4-6",
       PROMPT_PATH: "custom/prompt.md",
-      STATE_DIR: "/tmp/state",
     };
 
     const config = loadConfig(env);
@@ -74,7 +72,6 @@ describe("loadConfig", () => {
     expect(config.pollIntervalMinutes).toBe(30);
     expect(config.claudeModel).toBe("claude-opus-4-6");
     expect(config.promptPath).toBe("custom/prompt.md");
-    expect(config.stateDir).toBe("/tmp/state");
   });
 
   it("derives orgUrl from org name", () => {
@@ -136,11 +133,6 @@ describe("loadConfig", () => {
     it("defaults agentMaxTurns to 120 and coerces overrides", () => {
       expect(loadConfig(validEnv).agentMaxTurns).toBe(120);
       expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "200" }).agentMaxTurns).toBe(200);
-    });
-
-    it("defaults maxProcessAttempts to 3 and coerces overrides", () => {
-      expect(loadConfig(validEnv).maxProcessAttempts).toBe(3);
-      expect(loadConfig({ ...validEnv, MAX_PROCESS_ATTEMPTS: "5" }).maxProcessAttempts).toBe(5);
     });
 
     it("reads LSP_PLUGIN_PATH", () => {

@@ -2,7 +2,6 @@
 
 import { loadConfig } from '../config/index.ts';
 import { startWatcher, runPollCycle } from '../services/watcher.ts';
-import { StateStore } from '../state/state-store.ts';
 import { getWorkItem } from '../sdk/azure-devops-client.ts';
 import { processItem } from '../services/processor.ts';
 
@@ -16,7 +15,6 @@ Commands:
   watch            Start the long-running watcher (polls every N minutes)
   run-once         Run a single poll cycle and exit
   test-item <id>   Process a single work item (dry-run, no writes)
-  reset-state      Clear the processed item state and exit
   help             Show this help message
 
 Options:
@@ -34,10 +32,8 @@ Environment variables:
   LSP_PLUGIN_PATH           Local path to the LSP plugin loaded into the agent
   POLL_INTERVAL_MINUTES     Polling interval (default: 5)
   AGENT_MAX_TURNS           Max agentic turns per item (default: 120)
-  MAX_PROCESS_ATTEMPTS      Attempts before giving up on an item (default: 3)
   CLAUDE_MODEL              Claude model to use (default: claude-sonnet-4-6)
   PROMPT_PATH               Orchestration prompt (default: .claude/commands/create-script.md)
-  STATE_DIR                 State directory (default: .state)
 `.trim();
 
 const command = process.argv[2];
@@ -56,8 +52,7 @@ switch (command) {
     const config = loadConfig();
     config.dryRun = dryRun;
     if (dryRun) console.log('[DRY RUN] No writes will be made to Azure DevOps\n');
-    const stateStore = new StateStore(config.stateDir);
-    const result = await runPollCycle(config, stateStore);
+    const result = await runPollCycle(config);
     console.log(
       `Done: ${result.processed} processed, ${result.errors} errors, ` +
         `$${result.costUsd.toFixed(4)} total cost`,
@@ -81,14 +76,6 @@ switch (command) {
       `\nDone: ${result.processed ? 'processed' : 'failed'}` +
         `${result.error ? ` (${result.error})` : ''} — $${(result.costUsd ?? 0).toFixed(4)}`,
     );
-    break;
-  }
-
-  case 'reset-state': {
-    const config = loadConfig();
-    const stateStore = new StateStore(config.stateDir);
-    stateStore.reset();
-    console.log('State has been reset');
     break;
   }
 

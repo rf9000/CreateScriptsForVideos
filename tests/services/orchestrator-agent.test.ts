@@ -20,7 +20,6 @@ function mockConfig(): AppConfig {
     pollIntervalMinutes: 5,
     claudeModel: 'claude-sonnet-4-6',
     promptPath: '.claude/commands/create-script.md',
-    stateDir: '.state',
     dryRun: false,
     areaPath: '',
     createScriptTag: 'create script',
@@ -30,7 +29,6 @@ function mockConfig(): AppConfig {
     pteOutputDir: '/work/pte',
     lspPluginPath: '/plugins/lsp',
     agentMaxTurns: 120,
-    maxProcessAttempts: 3,
   };
 }
 

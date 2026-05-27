@@ -27,14 +27,9 @@ services:
       - /home/azureuser/tools/al/al-ext/extension/bin:/opt/al/bin:ro
       # AL language-server plugin (linux variant of al-language-server from claude-code-lsps)
       - /home/azureuser/tools/claude-code-lsps/al-language-server-go-linux:/opt/al-lsp-plugin:ro
-      # Processed-item state (internal JSON — named volume is fine)
-      - create-scripts-state:/app/.state
       # Generated output (PTE + script) — bind-mounted to a host folder beside the
       # compose (~/teams/continia-banking/output) so it's browsable directly (e.g.
       # via WinSCP). The container writes as the `claude` user, so the folder ends
       # up owned by uid 1001.
       - /home/azureuser/teams/continia-banking/output:/app/output
     restart: unless-stopped
-
-volumes:
-  create-scripts-state:

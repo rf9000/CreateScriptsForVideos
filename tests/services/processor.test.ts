@@ -13,7 +13,6 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     pollIntervalMinutes: 5,
     claudeModel: 'claude-sonnet-4-6',
     promptPath: '.claude/commands/create-script.md',
-    stateDir: '.state',
     dryRun: false,
     areaPath: '',
     createScriptTag: 'create script',
@@ -23,7 +22,6 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     pteOutputDir: './output',
     lspPluginPath: '',
     agentMaxTurns: 120,
-    maxProcessAttempts: 3,
     ...overrides,
   };
 }
@@ -156,7 +154,7 @@ describe('processItem — success', () => {
     expect(call[2]).toBe('create script');
   });
 
-  test('still reports success if tag removal fails (state store is the dedup)', async () => {
+  test('still reports success if tag removal fails (best-effort)', async () => {
     const deps = makeDeps({
       removeTag: mock(async () => {
         throw new Error('tag PATCH failed');
@@ -199,6 +197,15 @@ describe('processItem — failure', () => {
     expect(result.processed).toBe(false);
     expect(result.error).toContain('environment would not start');
   });
+
+  test('removes the tag on failure too, and the comment says to re-tag', async () => {
+    const deps = failDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    expect(deps.removeTag).toHaveBeenCalledTimes(1);
+    const comment = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2] as string;
+    expect(comment.toLowerCase()).toContain('re-add the tag');
+  });
 });
 
 describe('processItem — dry run', () => {
@@ -209,6 +216,7 @@ describe('processItem — dry run', () => {
     expect(deps.uploadAttachment).not.toHaveBeenCalled();
     expect(deps.linkAttachment).not.toHaveBeenCalled();
     expect(deps.addComment).not.toHaveBeenCalled();
+    expect(deps.removeTag).not.toHaveBeenCalled();
     expect(result.processed).toBe(true);
     expect(result.costUsd).toBe(0.5);
   });

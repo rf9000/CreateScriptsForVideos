@@ -17,10 +17,8 @@ const envSchema = z.object({
   LSP_PLUGIN_PATH: z.string().default(""),
   POLL_INTERVAL_MINUTES: z.coerce.number().default(5),
   AGENT_MAX_TURNS: z.coerce.number().default(120),
-  MAX_PROCESS_ATTEMPTS: z.coerce.number().default(3),
   CLAUDE_MODEL: z.string().default("claude-sonnet-4-6"),
   PROMPT_PATH: z.string().default(".claude/commands/create-script.md"),
-  STATE_DIR: z.string().default(".state"),
 });
 
 export function loadConfig(
@@ -47,7 +45,6 @@ export function loadConfig(
     pollIntervalMinutes: parsed.POLL_INTERVAL_MINUTES,
     claudeModel: parsed.CLAUDE_MODEL,
     promptPath: parsed.PROMPT_PATH,
-    stateDir: parsed.STATE_DIR,
     dryRun: false,
     areaPath: parsed.AZURE_DEVOPS_AREA_PATH,
     createScriptTag: parsed.CREATE_SCRIPT_TAG,
@@ -57,6 +54,5 @@ export function loadConfig(
     pteOutputDir: parsed.PTE_OUTPUT_DIR ?? workspaceOutputDir,
     lspPluginPath: parsed.LSP_PLUGIN_PATH,
     agentMaxTurns: parsed.AGENT_MAX_TURNS,
-    maxProcessAttempts: parsed.MAX_PROCESS_ATTEMPTS,
   };
 }

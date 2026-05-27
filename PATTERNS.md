@@ -20,11 +20,9 @@ Services define a `Deps` interface listing their external dependencies as functi
 
 `adoFetchWithRetry()` wraps `adoFetch()` with configurable retry delays (default: 1s, 2s, 4s). Retries on 5xx and network errors. Immediately re-throws 4xx errors. Tests pass `[0, 0, 0]` delays for speed.
 
-## JSON State Store
+## Tag-driven queue (no persisted state)
 
-**File:** `src/state/state-store.ts`
-
-`StateStore` class tracks processed item IDs using an in-memory `Set` backed by a JSON file. O(1) lookups via `isProcessed()`. Graceful recovery from corrupted files. Creates directories recursively.
+Discovery is driven entirely by the work-item tag (`queryWorkItemsByTag`), and the processor removes the tag after every attempt (success or failure). The tag's presence IS the queue, so there's no processed-item state to persist; re-tagging an item requests it again.
 
 ## Polling with Graceful Shutdown
 
@@ -42,7 +40,7 @@ Uses `query()` from `@anthropic-ai/claude-agent-sdk` with a system prompt loaded
 
 **File:** `src/cli/index.ts`
 
-Simple `switch` statement on `process.argv[2]`. Supports `watch`, `run-once`, `test-item <id>`, `reset-state`, `help`. Global `--dry-run` flag. No external CLI framework needed.
+Simple `switch` statement on `process.argv[2]`. Supports `watch`, `run-once`, `test-item <id>`, `help`. Global `--dry-run` flag. No external CLI framework needed.
 
 ## Testing with Mock Helpers
 

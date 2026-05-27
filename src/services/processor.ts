@@ -89,7 +89,7 @@ function buildFailureComment(result: ScriptResult): string {
   return [
     '<p>Script generation failed for this work item:</p>',
     `<blockquote>${escapeHtml(result.errorMessage ?? 'unknown error')}</blockquote>`,
-    '<p>It will be retried on the next polling cycle.</p>',
+    '<p>The tag has been removed. <strong>Re-add the tag</strong> (e.g. after adding more detail) to try again.</p>',
   ].join('\n');
 }
 
@@ -145,19 +145,35 @@ export async function processItem(
     );
     await deps.addComment(config, item.id, buildEnvComment(result, fileName));
 
-    // Drop the tag so the item isn't rediscovered. Non-fatal: the state store is
-    // the authoritative dedup, so a failed removal must never re-provision an env.
-    try {
-      await deps.removeTag(config, item.id, config.createScriptTag);
-    } catch (err) {
-      log(`  Item #${item.id}: Script done but failed to remove tag — ${err}`);
-    }
-
     log(`  Item #${item.id}: Script attached and environment details posted`);
     return { itemId: item.id, processed: true, costUsd };
   } catch (err) {
     log(`  Item #${item.id}: Error — ${err}`);
+    // Best-effort failure comment so a removed tag always has an explanation.
+    if (!config.dryRun) {
+      try {
+        await deps.addComment(
+          config,
+          item.id,
+          buildFailureComment({ status: 'failed', errorMessage: String(err) }),
+        );
+      } catch {
+        // ignore — the finally still removes the tag
+      }
+    }
     return { itemId: item.id, processed: false, error: String(err) };
+  } finally {
+    // The tag is the work queue: drop it after every real attempt (success or
+    // failure) so the item isn't rediscovered. Re-tagging is how you request it
+    // again. Skipped in dry-run (no writes). Best-effort — a failed removal just
+    // means the item may be retried on the next cycle.
+    if (!config.dryRun) {
+      try {
+        await deps.removeTag(config, item.id, config.createScriptTag);
+      } catch (err) {
+        log(`  Item #${item.id}: Failed to remove tag — ${err}`);
+      }
+    }
   }
 }
 

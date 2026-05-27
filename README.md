@@ -48,14 +48,13 @@ This template provides production-ready scaffolding for projects that:
 
 ```
 src/
-├── cli/index.ts              # CLI entry point (watch, run-once, test-item, reset-state)
+├── cli/index.ts              # CLI entry point (watch, run-once, test-item)
 ├── config/index.ts           # Zod-based environment variable validation
 ├── sdk/azure-devops-client.ts # Azure DevOps REST API client with retry
 ├── services/
 │   ├── watcher.ts            # Polling loop with graceful shutdown
 │   ├── processor.ts          # Business logic (replace with your own)
-│   └── ai-generator.ts       # Claude AI integration
-├── state/state-store.ts      # JSON-based state persistence
+│   └── orchestrator-agent.ts # Claude agent integration
 └── types/index.ts            # Shared TypeScript interfaces
 
 tests/                        # Mirror of src/ with full test coverage
@@ -68,7 +67,6 @@ tests/                        # Mirror of src/ with full test coverage
 | `bun run start` | Start the watcher (polls every N minutes) |
 | `bun run once` | Run a single poll cycle and exit |
 | `bun src/cli/index.ts test-item <id>` | Process a single work item in dry-run mode |
-| `bun src/cli/index.ts reset-state` | Clear processed state |
 | `bun test` | Run all tests |
 | `bun run typecheck` | Run TypeScript type checking |
 

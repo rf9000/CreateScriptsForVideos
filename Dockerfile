@@ -45,8 +45,8 @@ ENV PATH="/opt/continia:/home/claude/.local/bin:$PATH"
 # setting CONTINIA_ALC_PATH=/opt/al/bin/linux/alc. The whole bin/ is mounted so the
 # analyzer DLLs in bin/Analyzers/ resolve relative to alc. libicu (above) is its runtime dep.
 
-# Persist processed-item state, generated output, and Claude auth across restarts
-VOLUME /app/.state
+# Persist generated output and Claude auth across restarts (no processed-item
+# state — the work-item tag is the queue, removed after each attempt)
 VOLUME /app/output
 VOLUME /home/claude/.claude
 

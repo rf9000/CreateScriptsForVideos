@@ -17,7 +17,7 @@ DevOpsPullTemplate is a GitHub template repository for Azure DevOps automation p
 
 - **Dependency injection** via interfaces on all services for testability
 - **Exponential backoff retry** on Azure DevOps API calls (5xx/network errors)
-- **JSON state store** with Set-based O(1) lookups
+- **Tag-driven queue** — the work-item tag is the queue, removed after each attempt; no persisted state
 - **Polling watcher** with graceful SIGINT/SIGTERM shutdown
 - **WIQL queries** to find work items to process
 

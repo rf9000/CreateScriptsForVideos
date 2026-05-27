@@ -3,7 +3,6 @@ set -e
 
 # Fix ownership of mounted/named volumes (they mount as root) then drop privileges.
 if [ "$(id -u)" = "0" ]; then
-  chown -R claude:claude /app/.state
   chown -R claude:claude /app/output
   chown -R claude:claude /home/claude/.claude 2>/dev/null || true
 

@@ -8,7 +8,6 @@ export interface AppConfig {
   pollIntervalMinutes: number;
   claudeModel: string;
   promptPath: string;
-  stateDir: string;
   dryRun: boolean;
   /** Area path to scope discovery to (WIQL `UNDER`, includes descendants). Empty = no area filter. */
   areaPath: string;
@@ -26,8 +25,6 @@ export interface AppConfig {
   lspPluginPath: string;
   /** Max agentic turns for the orchestrator agent. */
   agentMaxTurns: number;
-  /** Max processing attempts per work item before giving up. */
-  maxProcessAttempts: number;
 }
 
 /** A relation (link) on a work item, e.g. an ArtifactLink to a Git branch/commit. */
@@ -49,14 +46,6 @@ export interface WorkItemResponse {
 /** Response shape from a WIQL query. */
 export interface WiqlQueryResult {
   workItems: Array<{ id: number; url: string }>;
-}
-
-/** Persisted state tracking which items have already been processed. */
-export interface ProcessedState {
-  processedItemIds: number[];
-  lastRunAt: string;
-  /** Processing attempts per work item id (keyed by id as a string in JSON). */
-  attempts?: Record<string, number>;
 }
 
 /** Result summary after processing a single item. */

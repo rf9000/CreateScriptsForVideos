@@ -130,8 +130,10 @@ same way here.
 ## Operational notes
 
 - **Cost/cleanup:** each processed item provisions a BC environment and leaves it running
-  (`create-script.md` step 6). Track environments and prune old ones; `MAX_PROCESS_ATTEMPTS`
-  retries can spin up several per item.
+  (`create-script.md` step 6). Track environments and prune old ones.
+- **Tag is the queue (no state file):** discovery is driven entirely by the work-item tag, which
+  is removed after every attempt (success or failure). There is no processed-item state — failures
+  do NOT auto-retry; re-add the tag to request a run again.
 - **Never write into continia-banking:** `PTE_OUTPUT_DIR`/`WORKSPACE_OUTPUT_DIR` point at the
   writable `/app/output` volume, separate from the `:ro` banking mount. Keep it that way.
 - **Output is browsable on the host:** `/app/output` is bind-mounted to
