@@ -134,8 +134,16 @@ function buildOptions(config: AppConfig): Record<string, unknown> {
     tools: { type: 'preset', preset: 'claude_code' },
     allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill', 'Task'],
     // Pass the continia.exe API token to the agent's subprocess environment so
-    // `continia --token $CONTINIA_API_TOKEN ...` works without VS Code.
-    env: { ...process.env, CONTINIA_API_TOKEN: config.continiaApiToken },
+    // `continia --token $CONTINIA_API_TOKEN ...` works without VS Code. When an
+    // ANTHROPIC_API_KEY is configured, forward it so Claude Code authenticates via
+    // API billing instead of the Claude Code OAuth credentials (~/.claude).
+    env: {
+      ...process.env,
+      CONTINIA_API_TOKEN: config.continiaApiToken,
+      ...(config.anthropicApiKey
+        ? { ANTHROPIC_API_KEY: config.anthropicApiKey }
+        : {}),
+    },
   };
   if (config.lspPluginPath) {
     options.plugins = [{ type: 'local', path: config.lspPluginPath }];

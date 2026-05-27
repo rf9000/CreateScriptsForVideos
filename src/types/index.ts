@@ -17,6 +17,8 @@ export interface AppConfig {
   continiaBankingPath: string;
   /** API token for continia.exe (passed as the global --token option). */
   continiaApiToken: string;
+  /** Anthropic API key for the agent. Empty = use Claude Code OAuth (~/.claude) instead. */
+  anthropicApiKey: string;
   /** Writable root for the generated .md recording script. */
   workspaceOutputDir: string;
   /** Writable base path where the PTE AL project is created before publishing. */

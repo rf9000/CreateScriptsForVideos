@@ -27,6 +27,7 @@ Environment variables:
   AZURE_DEVOPS_AREA_PATH    Area path to scope work items (WIQL UNDER; optional)
   CREATE_SCRIPT_TAG         Tag that opts items in (default: "create script")
   CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
+  ANTHROPIC_API_KEY         Anthropic API key (optional; empty = Claude Code OAuth)
   WORKSPACE_OUTPUT_DIR      Writable dir for the generated .md script (default: ./output)
   PTE_OUTPUT_DIR            Writable dir for the generated PTE (default: WORKSPACE_OUTPUT_DIR)
   LSP_PLUGIN_PATH           Local path to the LSP plugin loaded into the agent

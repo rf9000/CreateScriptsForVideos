@@ -25,6 +25,7 @@ function mockConfig(): AppConfig {
     createScriptTag: 'create script',
     continiaBankingPath: '/repos/banking',
     continiaApiToken: '',
+    anthropicApiKey: '',
     workspaceOutputDir: '/work/output',
     pteOutputDir: '/work/pte',
     lspPluginPath: '/plugins/lsp',
@@ -209,5 +210,42 @@ describe('runOrchestrator', () => {
 
     const env = captured!.options.env as Record<string, string>;
     expect(env.CONTINIA_API_TOKEN).toBe('tok-xyz');
+  });
+
+  test('forwards ANTHROPIC_API_KEY to the agent env when configured', async () => {
+    let captured: { options: Record<string, unknown> } | undefined;
+    const query = (params: { prompt: string; options: Record<string, unknown> }) => {
+      captured = params;
+      return (async function* () {
+        yield { type: 'result', subtype: 'success', result: '{"status":"success"}' } as AgentMessage;
+      })();
+    };
+    const config = { ...mockConfig(), anthropicApiKey: 'sk-ant-test' };
+
+    await runOrchestrator(config, baseContext, { query });
+
+    const env = captured!.options.env as Record<string, string>;
+    expect(env.ANTHROPIC_API_KEY).toBe('sk-ant-test');
+  });
+
+  test('does not set ANTHROPIC_API_KEY when not configured (uses OAuth)', async () => {
+    const prevKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      let captured: { options: Record<string, unknown> } | undefined;
+      const query = (params: { prompt: string; options: Record<string, unknown> }) => {
+        captured = params;
+        return (async function* () {
+          yield { type: 'result', subtype: 'success', result: '{"status":"success"}' } as AgentMessage;
+        })();
+      };
+
+      await runOrchestrator(mockConfig(), baseContext, { query });
+
+      const env = captured!.options.env as Record<string, string>;
+      expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    } finally {
+      if (prevKey !== undefined) process.env.ANTHROPIC_API_KEY = prevKey;
+    }
   });
 });
