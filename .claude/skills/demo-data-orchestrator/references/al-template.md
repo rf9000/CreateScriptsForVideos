@@ -26,7 +26,7 @@ Each output is a **complete, deployable extension** — not a loose file. It con
 ```json
 {
   "id": "<GENERATE-REAL-GUID>",
-  "name": "Demo Data - <Feature Name>",
+  "name": "Continia Demo Data - <Feature Name>",
   "publisher": "Continia Software",
   "version": "1.0.0.0",
   "runtime": "17.0",
@@ -182,7 +182,7 @@ codeunit 50000 "Demo Data - <Feature Name>"
 ### Object Header
 - **Use ID 50000** in the template — this falls in the demo extension range (50000-50099)
 - **File name:** Always `InstallDemoData.Codeunit.al`
-- **Name format:** `"Demo Data - <Feature Name>"` (e.g., `"Demo Data - Bank Reconciliation"`)
+- **Name format:** `"Continia Demo Data - <Feature Name>"` (e.g., `"Continia Demo Data - Bank Reconciliation"`) — the PTE name must always start with "Continia"
 - **`Access = Internal`** — internal to this demo extension
 - **`Subtype = Upgrade`** — use Upgrade (not Install) so data creation can be forced on every publish via `"forceUpgrade": true` in launch.json. Install triggers only run once and can't be re-triggered without version bumps.
 - **`Permissions`** — declare all `tabledata` permissions explicitly:

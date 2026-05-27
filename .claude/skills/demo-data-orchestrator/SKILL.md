@@ -111,7 +111,7 @@ Read `references/al-template.md` for the exact structure. The output is a folder
    - `CreateDemoData()` is a `local procedure` (only called from the trigger)
    - Object ID 50000 (in the demo extension range)
 
-4. **Name format:** `"Demo Data - <Feature Name>"`
+4. **Name format:** `"Continia Demo Data - <Feature Name>"` — the PTE name must always start with "Continia"
 
 5. **Labels for ALL values** — Every hardcoded value must be a Label with a Comment. Never use inline strings in procedure calls. Group labels by entity type.
 
