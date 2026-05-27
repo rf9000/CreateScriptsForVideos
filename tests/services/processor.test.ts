@@ -111,6 +111,35 @@ describe('processItem — success', () => {
     expect(comment.toLowerCase()).toContain('attach');
   });
 
+  test('formats the comment as HTML (ADO renders HTML, not Markdown)', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const comment = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2] as string;
+    expect(comment).toContain('<strong>Merge Rules</strong>');
+    expect(comment).toContain('<li><strong>Environment:</strong>');
+    expect(comment).toContain('<a href="https://env.example.com">');
+    expect(comment).toContain('<code>recording-script-42.md</code>');
+    expect(comment).not.toContain('**'); // no leftover Markdown
+  });
+
+  test('renders gaps as an escaped HTML list', async () => {
+    const deps = makeDeps({
+      runOrchestrator: mock(
+        async (): Promise<ScriptResult> => ({
+          ...successResult,
+          gaps: ['Filter <Bank> not shown', 'Disable/Enable & flow omitted'],
+        }),
+      ),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const comment = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2] as string;
+    expect(comment).toContain('<strong>Gaps to be aware of:</strong>');
+    expect(comment).toContain('<li>Filter &lt;Bank&gt; not shown</li>');
+    expect(comment).toContain('<li>Disable/Enable &amp; flow omitted</li>');
+  });
+
   test('returns processed: true and propagates the USD cost', async () => {
     const result = await processItem(mockConfig(), mockWorkItem(), makeDeps());
     expect(result.processed).toBe(true);

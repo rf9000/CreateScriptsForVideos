@@ -39,8 +39,8 @@ async function defaultNotifyGaveUp(
   await sdk.addWorkItemComment(
     config,
     item.id,
-    `Script generation failed ${attempts} times and will not be retried automatically. ` +
-      `Please review and re-tag the work item to try again.`,
+    `<p>Script generation failed ${attempts} times and will not be retried automatically. ` +
+      `Please review and <strong>re-tag</strong> the work item to try again.</p>`,
   );
   // Remove the tag so it stops being rediscovered; re-tagging is the retry signal
   // the comment above refers to.

@@ -51,31 +51,45 @@ function log(message: string): void {
   console.log(`[${ts}] ${message}`);
 }
 
+/** Escape text for safe inclusion in the HTML comment body ADO renders. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ADO work-item comments render HTML, not Markdown — build HTML directly.
 function buildEnvComment(result: ScriptResult, fileName: string): string {
   const env = result.env;
-  const feature = result.feature ?? 'this feature';
+  const feature = escapeHtml(result.feature ?? 'this feature');
+  const url = env?.url ?? '';
   const lines = [
-    `Recording environment ready for **${feature}**.`,
-    '',
-    `- **Environment:** ${env?.name ?? '(unknown)'} (${env?.id ?? '?'})`,
-    `- **URL:** ${env?.url ?? '(unknown)'}`,
-    `- **Username:** ${env?.username ?? '(unknown)'}`,
-    `- **Password:** ${env?.password ?? '(unknown)'}`,
+    `<p>Recording environment ready for <strong>${feature}</strong>.</p>`,
+    '<ul>',
+    `<li><strong>Environment:</strong> ${escapeHtml(env?.name ?? '(unknown)')} (${escapeHtml(env?.id ?? '?')})</li>`,
+    `<li><strong>URL:</strong> ${url ? `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>` : '(unknown)'}</li>`,
+    `<li><strong>Username:</strong> ${escapeHtml(env?.username ?? '(unknown)')}</li>`,
+    `<li><strong>Password:</strong> ${escapeHtml(env?.password ?? '(unknown)')}</li>`,
+    '</ul>',
   ];
   if (result.gaps && result.gaps.length > 0) {
-    lines.push('', '**Gaps to be aware of:**', ...result.gaps.map((g) => `- ${g}`));
+    lines.push('<p><strong>Gaps to be aware of:</strong></p>', '<ul>');
+    for (const g of result.gaps) lines.push(`<li>${escapeHtml(g)}</li>`);
+    lines.push('</ul>');
   }
-  lines.push('', `The recording script is attached to this work item as \`${fileName}\`.`);
+  lines.push(
+    `<p>The recording script is attached to this work item as <code>${escapeHtml(fileName)}</code>.</p>`,
+  );
   return lines.join('\n');
 }
 
 function buildFailureComment(result: ScriptResult): string {
   return [
-    `Script generation failed for this work item:`,
-    '',
-    `> ${result.errorMessage ?? 'unknown error'}`,
-    '',
-    `It will be retried on the next polling cycle.`,
+    '<p>Script generation failed for this work item:</p>',
+    `<blockquote>${escapeHtml(result.errorMessage ?? 'unknown error')}</blockquote>`,
+    '<p>It will be retried on the next polling cycle.</p>',
   ].join('\n');
 }
 
