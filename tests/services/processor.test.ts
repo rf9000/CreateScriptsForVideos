@@ -65,6 +65,7 @@ function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
     uploadAttachment: mock(async () => ({ id: 'att-1', url: 'https://att/att-1' })),
     linkAttachment: mock(async () => ({}) as WorkItemResponse),
     addComment: mock(async () => {}),
+    removeTag: mock(async () => {}),
     report: mock(() => {}),
     ...overrides,
   };
@@ -115,6 +116,25 @@ describe('processItem — success', () => {
     expect(result.processed).toBe(true);
     expect(result.itemId).toBe(42);
     expect(result.costUsd).toBe(0.5);
+  });
+
+  test('removes the create-script tag once handled', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const call = (deps.removeTag as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(call[1]).toBe(42);
+    expect(call[2]).toBe('create script');
+  });
+
+  test('still reports success if tag removal fails (state store is the dedup)', async () => {
+    const deps = makeDeps({
+      removeTag: mock(async () => {
+        throw new Error('tag PATCH failed');
+      }),
+    });
+    const result = await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(result.processed).toBe(true);
   });
 });
 

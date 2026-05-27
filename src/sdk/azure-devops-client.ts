@@ -189,6 +189,32 @@ export async function getWorkItemComments(
   return data.comments.map((c) => c.text);
 }
 
+/**
+ * Remove a tag from a work item's `System.Tags` (case-insensitive). No-op if the
+ * tag isn't present. Uses a `replace` patch — `add` on System.Tags merges rather
+ * than overwriting, so it would never actually remove anything.
+ */
+export async function removeTagFromWorkItem(
+  config: AppConfig,
+  workItemId: number,
+  tagToRemove: string,
+): Promise<void> {
+  const workItem = await getWorkItem(config, workItemId);
+  const currentTags = String(workItem.fields['System.Tags'] ?? '');
+  const remaining = currentTags
+    .split(';')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && t.toLowerCase() !== tagToRemove.toLowerCase());
+  const path = `wit/workitems/${workItemId}?api-version=7.0`;
+  await adoFetchWithRetry<WorkItemResponse>(config, path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json-patch+json' },
+    body: JSON.stringify([
+      { op: 'replace', path: '/fields/System.Tags', value: remaining.join('; ') },
+    ]),
+  });
+}
+
 /** Add a comment to a work item. */
 export async function addWorkItemComment(
   config: AppConfig,

@@ -30,6 +30,7 @@ export interface ProcessorDeps {
     comment: string,
   ) => Promise<WorkItemResponse>;
   addComment: (config: AppConfig, workItemId: number, text: string) => Promise<void>;
+  removeTag: (config: AppConfig, workItemId: number, tag: string) => Promise<void>;
   /** Human-facing terminal output (used for dry-run reporting). */
   report: (text: string) => void;
 }
@@ -41,6 +42,7 @@ const defaultDeps: ProcessorDeps = {
   uploadAttachment: sdk.uploadAttachment,
   linkAttachment: sdk.linkAttachment,
   addComment: sdk.addWorkItemComment,
+  removeTag: sdk.removeTagFromWorkItem,
   report: (text) => console.log(text),
 };
 
@@ -128,6 +130,14 @@ export async function processItem(
       `Recording script for ${result.feature ?? title}`,
     );
     await deps.addComment(config, item.id, buildEnvComment(result, fileName));
+
+    // Drop the tag so the item isn't rediscovered. Non-fatal: the state store is
+    // the authoritative dedup, so a failed removal must never re-provision an env.
+    try {
+      await deps.removeTag(config, item.id, config.createScriptTag);
+    } catch (err) {
+      log(`  Item #${item.id}: Script done but failed to remove tag — ${err}`);
+    }
 
     log(`  Item #${item.id}: Script attached and environment details posted`);
     return { itemId: item.id, processed: true, costUsd };

@@ -11,6 +11,7 @@ import {
   updateWorkItemField,
   getWorkItemComments,
   addWorkItemComment,
+  removeTagFromWorkItem,
   uploadAttachment,
   linkAttachment,
 } from '../../src/sdk/azure-devops-client.ts';
@@ -359,6 +360,28 @@ describe('queryWorkItemsByTag', () => {
 
     expect(result).toEqual([]);
     expect(mockFn.mock.calls.length).toBe(1);
+  });
+});
+
+describe('removeTagFromWorkItem', () => {
+  test('removes the tag (case-insensitive) via a replace patch', async () => {
+    setSequentialMockFetch(
+      { body: { id: 42, fields: { 'System.Tags': 'Create Script; demo; other' }, rev: 1, url: 'u' } },
+      { body: { id: 42, fields: {}, rev: 2, url: 'u' } },
+    );
+
+    await removeTagFromWorkItem(mockConfig(), 42, 'create script');
+
+    const patchInit = mockFn.mock.calls[1]![1] as RequestInit;
+    expect(patchInit.method).toBe('PATCH');
+    const ops = JSON.parse(patchInit.body as string) as Array<{
+      op: string;
+      path: string;
+      value: string;
+    }>;
+    expect(ops[0]!.op).toBe('replace');
+    expect(ops[0]!.path).toBe('/fields/System.Tags');
+    expect(ops[0]!.value).toBe('demo; other');
   });
 });
 

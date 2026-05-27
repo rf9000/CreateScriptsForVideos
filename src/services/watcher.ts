@@ -42,6 +42,9 @@ async function defaultNotifyGaveUp(
     `Script generation failed ${attempts} times and will not be retried automatically. ` +
       `Please review and re-tag the work item to try again.`,
   );
+  // Remove the tag so it stops being rediscovered; re-tagging is the retry signal
+  // the comment above refers to.
+  await sdk.removeTagFromWorkItem(config, item.id, config.createScriptTag);
 }
 
 const defaultDeps: WatcherDeps = {
