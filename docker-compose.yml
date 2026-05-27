@@ -1,7 +1,8 @@
-# Lives on the VM under ~/teams/continia-banking/ alongside the investigate stack.
-# You can either keep this as its own file (docker compose -f) or paste the
-# `create-scripts-for-videos` service block into the existing docker-compose.yml —
-# it shares the same continia-banking repo mount and ~/.claude auth.
+# Reference service for the shared compose on the VM at ~/teams/continia-banking/.
+# The real deployment merges the `create-scripts-for-videos` service below into the
+# existing team docker-compose.yml (which already runs investigate-work-items etc.),
+# so one `docker compose up -d` manages them all. This standalone file is the
+# version-controlled source of that block; adjust host paths to your VM layout.
 services:
   create-scripts-for-videos:
     build:
@@ -9,22 +10,23 @@ services:
       dockerfile: Dockerfile
     env_file: .env.create-scripts          # secrets: AZURE_DEVOPS_PAT, CONTINIA_API_TOKEN
     environment:
-      # Container-side paths (do not put these in .env.create-scripts — they are layout, not secrets)
+      # Container-side paths (layout, not secrets — keep them here, not in the env file)
       CONTINIA_BANKING_PATH: /repos/continia-banking
       WORKSPACE_OUTPUT_DIR: /app/output
       PTE_OUTPUT_DIR: /app/output          # MUST be writable and NOT inside continia-banking
-      # CONTINIA_ALC_PATH: /opt/al/alc      # TODO: set once a Linux alc is provisioned (see Dockerfile)
-      # LSP_PLUGIN_PATH: /opt/al-lsp-plugin # TODO: set if the LSP plugin is mounted (below)
+      CONTINIA_ALC_PATH: /opt/al/bin/linux/alc
+      LSP_PLUGIN_PATH: /opt/al-lsp-plugin
     volumes:
       # Claude Code OAuth credentials, shared with the host (re-auth on the host as needed)
       - /home/azureuser/.claude:/home/claude/.claude
       # continia-banking: READ-ONLY navigation/LSP/symbol source
       - /home/azureuser/repos/continia-banking:/repos/continia-banking:ro
-      # continia-linux binary, provisioned on the host (chmod +x there)
+      # continia CLI (linux build), provisioned on the host (chmod +x there)
       - /home/azureuser/tools/continia-linux:/opt/continia/continia:ro
-      # Linux alc + LSP plugin — uncomment and adjust once provisioned
-      # - /home/azureuser/tools/al-alc:/opt/al:ro
-      # - /home/azureuser/tools/al-lsp-plugin:/opt/al-lsp-plugin:ro
+      # AL compiler: the AL extension's bin/ (pinned 18.0.2293710); whole dir so Analyzers/ resolve
+      - /home/azureuser/tools/al/al-ext/extension/bin:/opt/al/bin:ro
+      # AL language-server plugin (linux variant of al-language-server from claude-code-lsps)
+      - /home/azureuser/tools/claude-code-lsps/al-language-server-go-linux:/opt/al-lsp-plugin:ro
       # Persisted state and generated output
       - create-scripts-state:/app/.state
       - create-scripts-output:/app/output

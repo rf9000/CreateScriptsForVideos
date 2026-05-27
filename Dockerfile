@@ -2,8 +2,10 @@ FROM oven/bun:1
 
 WORKDIR /app
 
-# git for the continia-banking clone operations, curl/bash for Claude Code install
-RUN apt-get update && apt-get install -y git curl bash && rm -rf /var/lib/apt/lists/*
+# git for the continia-banking clone operations, curl/bash for Claude Code install,
+# libicu for the .NET AL compiler (alc) mounted at runtime — without it alc aborts
+# with a globalization/ICU error inside the container.
+RUN apt-get update && apt-get install -y git curl bash libicu-dev && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies (as root, before switching user)
 COPY package.json bun.lock ./
@@ -38,10 +40,10 @@ ENV PATH="/opt/continia:/home/claude/.local/bin:$PATH"
 #        RUN chmod +x /opt/continia/continia
 
 # --- AL compiler (alc) ----------------------------------------------------------
-# `continia compile` / `continia deploy` need a Linux `alc`. continia-deploy resolves it
-# via CONTINIA_ALC_PATH, else the AL VS Code extension's bundled alc, else altool `al compile`.
-# TODO: provision a Linux alc (extract bin/linux from the AL Language .vsix, or install altool)
-# and set CONTINIA_ALC_PATH in .env.create-scripts to its absolute path.
+# `continia compile` / `continia deploy` need a Linux `alc`. Provisioned by mounting the
+# AL Language extension's `bin/` from the host (see DEPLOY.md / docker-compose.yml) and
+# setting CONTINIA_ALC_PATH=/opt/al/bin/linux/alc. The whole bin/ is mounted so the
+# analyzer DLLs in bin/Analyzers/ resolve relative to alc. libicu (above) is its runtime dep.
 
 # Persist processed-item state, generated output, and Claude auth across restarts
 VOLUME /app/.state
