@@ -15,7 +15,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     promptPath: '.claude/commands/create-script.md',
     stateDir: '.state',
     dryRun: false,
-    repoIds: [],
+    areaPath: '',
     createScriptTag: 'create script',
     continiaBankingPath: './continia-banking',
     continiaApiToken: '',

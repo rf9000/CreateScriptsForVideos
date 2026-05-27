@@ -30,7 +30,7 @@ function mockConfig(): AppConfig {
     promptPath: './prompt.md',
     stateDir: '.state',
     dryRun: false,
-    repoIds: [],
+    areaPath: '',
     createScriptTag: 'create script',
     continiaBankingPath: './continia-banking',
     continiaApiToken: '',
@@ -318,6 +318,37 @@ describe('queryWorkItemsByTag', () => {
     const body = JSON.parse(wiqlInit.body as string) as { query: string };
     expect(body.query).not.toContain('System.TeamProject');
     expect(body.query).toContain("[System.Tags] CONTAINS 'create script'");
+  });
+
+  test('adds an AreaPath UNDER clause when areaPath is set', async () => {
+    setSequentialMockFetch(
+      { body: { workItems: [{ id: 7 }] } },
+      { body: { value: [{ id: 7, fields: { 'System.Tags': 'create script' } }] } },
+    );
+    const config = { ...mockConfig(), areaPath: 'Continia Software\\Continia Banking' };
+
+    await queryWorkItemsByTag(config);
+
+    const body = JSON.parse(
+      (mockFn.mock.calls[0]![1] as RequestInit).body as string,
+    ) as { query: string };
+    expect(body.query).toContain(
+      "[System.AreaPath] UNDER 'Continia Software\\Continia Banking'",
+    );
+  });
+
+  test('omits the AreaPath clause when areaPath is empty', async () => {
+    setSequentialMockFetch(
+      { body: { workItems: [{ id: 7 }] } },
+      { body: { value: [{ id: 7, fields: { 'System.Tags': 'create script' } }] } },
+    );
+
+    await queryWorkItemsByTag(mockConfig());
+
+    const body = JSON.parse(
+      (mockFn.mock.calls[0]![1] as RequestInit).body as string,
+    ) as { query: string };
+    expect(body.query).not.toContain('System.AreaPath');
   });
 
   test('returns empty (and skips the tag fetch) when there are no candidates', async () => {

@@ -10,8 +10,8 @@ export interface AppConfig {
   promptPath: string;
   stateDir: string;
   dryRun: boolean;
-  /** Git repo GUIDs; only work items linked to one of these are processed. Empty = no repo filter. */
-  repoIds: string[];
+  /** Area path to scope discovery to (WIQL `UNDER`, includes descendants). Empty = no area filter. */
+  areaPath: string;
   /** Work-item tag that opts an item into script generation. */
   createScriptTag: string;
   /** Path to the read-only continia-banking clone (LSP navigation root). */

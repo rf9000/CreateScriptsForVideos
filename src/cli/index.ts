@@ -26,7 +26,7 @@ Environment variables:
   AZURE_DEVOPS_PAT          Azure DevOps personal access token (required)
   AZURE_DEVOPS_ORG          Azure DevOps organization name (required)
   AZURE_DEVOPS_PROJECT      Azure DevOps project name (required)
-  AZURE_DEVOPS_REPO_IDS     Comma-separated repo GUIDs to scope work items (optional)
+  AZURE_DEVOPS_AREA_PATH    Area path to scope work items (WIQL UNDER; optional)
   CREATE_SCRIPT_TAG         Tag that opts items in (default: "create script")
   CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
   WORKSPACE_OUTPUT_DIR      Writable dir for the generated .md script (default: ./output)

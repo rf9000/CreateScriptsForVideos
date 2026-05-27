@@ -8,7 +8,7 @@ const envSchema = z.object({
   AZURE_DEVOPS_ORG: z.string().min(1, "AZURE_DEVOPS_ORG is required"),
   AZURE_DEVOPS_PROJECT: z.string().min(1, "AZURE_DEVOPS_PROJECT is required"),
   AZURE_DEVOPS_WIQL_QUERY: z.string().default(DEFAULT_WIQL),
-  AZURE_DEVOPS_REPO_IDS: z.string().default(""),
+  AZURE_DEVOPS_AREA_PATH: z.string().default(""),
   CREATE_SCRIPT_TAG: z.string().default("create script"),
   CONTINIA_BANKING_PATH: z.string().default("./continia-banking"),
   CONTINIA_API_TOKEN: z.string().default(""),
@@ -22,14 +22,6 @@ const envSchema = z.object({
   PROMPT_PATH: z.string().default(".claude/commands/create-script.md"),
   STATE_DIR: z.string().default(".state"),
 });
-
-/** Parse a comma-separated env value into a trimmed, non-empty list. */
-function parseList(value: string): string[] {
-  return value
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
 
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
@@ -57,7 +49,7 @@ export function loadConfig(
     promptPath: parsed.PROMPT_PATH,
     stateDir: parsed.STATE_DIR,
     dryRun: false,
-    repoIds: parseList(parsed.AZURE_DEVOPS_REPO_IDS),
+    areaPath: parsed.AZURE_DEVOPS_AREA_PATH,
     createScriptTag: parsed.CREATE_SCRIPT_TAG,
     continiaBankingPath: parsed.CONTINIA_BANKING_PATH,
     continiaApiToken: parsed.CONTINIA_API_TOKEN,

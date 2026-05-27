@@ -84,21 +84,18 @@ describe("loadConfig", () => {
   });
 
   describe("script-generator config", () => {
-    it("parses AZURE_DEVOPS_REPO_IDS into a trimmed array", () => {
+    it("reads AZURE_DEVOPS_AREA_PATH into areaPath", () => {
       const env = {
         ...validEnv,
-        AZURE_DEVOPS_REPO_IDS: "a838fce3-3b9c-4c78-beec-cb4cf5983144, 6e549e35-d1b2 ,  ",
+        AZURE_DEVOPS_AREA_PATH: "Continia Software\\Continia Banking",
       };
       const config = loadConfig(env);
-      expect(config.repoIds).toEqual([
-        "a838fce3-3b9c-4c78-beec-cb4cf5983144",
-        "6e549e35-d1b2",
-      ]);
+      expect(config.areaPath).toBe("Continia Software\\Continia Banking");
     });
 
-    it("defaults repoIds to an empty array", () => {
+    it("defaults areaPath to an empty string", () => {
       const config = loadConfig(validEnv);
-      expect(config.repoIds).toEqual([]);
+      expect(config.areaPath).toBe("");
     });
 
     it("defaults createScriptTag to 'create script'", () => {

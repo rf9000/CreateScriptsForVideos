@@ -141,9 +141,15 @@ export async function updateWorkItemField(
 export async function queryWorkItemsByTag(
   config: AppConfig,
 ): Promise<number[]> {
-  const wiql =
+  let wiql =
     `SELECT [System.Id] FROM workitems ` +
     `WHERE [System.Tags] CONTAINS '${config.createScriptTag}'`;
+  // Area path is how work items are classified under a product (e.g.
+  // "Continia Software\Continia Banking") — UNDER matches the node and all
+  // descendants. This is the real scope signal; Git artifact links are absent.
+  if (config.areaPath) {
+    wiql += ` AND [System.AreaPath] UNDER '${config.areaPath}'`;
+  }
   const candidateIds = await queryWorkItems(config, wiql);
   if (candidateIds.length === 0) return [];
 

@@ -6,7 +6,6 @@ import type {
 import { StateStore } from '../state/state-store.ts';
 import * as sdk from '../sdk/azure-devops-client.ts';
 import * as proc from './processor.ts';
-import { linksRepo } from './work-item-filter.ts';
 
 export interface WatcherDeps {
   fetchItems: (
@@ -29,8 +28,7 @@ export interface WatcherDeps {
 async function defaultFetchItems(config: AppConfig): Promise<WorkItemResponse[]> {
   const ids = await sdk.queryWorkItemsByTag(config);
   if (ids.length === 0) return [];
-  const items = await sdk.getWorkItemsBatch(config, ids);
-  return items.filter((item) => linksRepo(item, config.repoIds));
+  return sdk.getWorkItemsBatch(config, ids);
 }
 
 async function defaultNotifyGaveUp(
