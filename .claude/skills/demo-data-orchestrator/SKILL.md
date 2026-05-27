@@ -133,7 +133,7 @@ Read `references/al-template.md` for the exact structure. The output is a folder
 
 13. **Internal access via dependency (NOT internalsVisibleTo).** All CTS-CB tables/enums/codeunits are `Access = Internal`. The PTE gains access by depending on the **"Continia Banking Internal Access"** app (`6e549e35-d1b2-4878-a37a-a736c22f35bf`) declared in `app.json` (see step 1). Do **NOT** modify `base-application/app.json` or any other file in the read-only continia-banking repo.
 
-**Write** the extension folder to the caller-provided PTE output directory with all three files (`app.json`, `.vscode/launch.json`, `InstallDemoData.Codeunit.al`). Never write into the read-only continia-banking repo.
+**Write** all three files (`app.json`, `.vscode/launch.json`, `InstallDemoData.Codeunit.al`) **directly into** the caller-provided PTE output directory — do NOT create a nested or feature-named subfolder, and produce exactly **one** extension (one `app.json`). If you revise the PTE, edit the files in place rather than creating a new folder. Never write into the read-only continia-banking repo.
 
 **Present** the generated code to the user for review before proceeding to Phase 4. In automation mode, log a summary of the generated extension and proceed directly.
 

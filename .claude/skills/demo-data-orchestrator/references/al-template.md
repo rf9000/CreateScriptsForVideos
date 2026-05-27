@@ -4,8 +4,12 @@ Template for generated demo data as a **deployable AL extension folder**. The ou
 
 ## Extension Folder Structure
 
+Write the three files **directly into the PTE output directory the caller gives you**
+(the orchestrator passes its absolute path). Produce exactly **one** extension (one
+`app.json`); do **NOT** create a nested or feature-named subfolder:
+
 ```
-demo-specs/data/<feature-kebab-case>/
+<pte-output-dir>/            ← the exact path the caller provided
   .vscode/
     launch.json
   app.json
@@ -173,7 +177,8 @@ codeunit 50000 "Demo Data - <Feature Name>"
 
 ### Extension Folder
 - **Always output a complete extension folder**, not a loose `.al` file
-- **Folder name:** `<feature-kebab-case>` under `demo-specs/data/`
+- **Location:** write the files **directly into the caller-provided PTE output directory** —
+  exactly one extension (one `app.json`), no nested or feature-named subfolder
 - The extension is self-contained and can be compiled + published independently
 - Use the Continia Banking base-application as the primary dependency
 - **Generate a real GUID** for `app.json` `id` at creation time: `powershell -Command "[guid]::NewGuid().ToString()"`. A zero GUID causes AL1053 compilation error
@@ -305,7 +310,7 @@ All CTS-CB tables, enums, and codeunits are `Access = Internal`. The demo extens
 The `continia deps` CLI only fetches direct dependencies. For a demo extension to compile:
 - **Microsoft Application/System symbols** must be available — copy from the main repo's `.alpackages/`
 - **Transitive Continia symbols** (e.g., import, export apps) must also be copied
-- Use a **shared `.alpackages/`** at the parent folder level (`demo-specs/data/.alpackages/`) rather than per-extension
+- Symbols go in the extension's own `.alpackages/` (i.e. `<pte-output-dir>/.alpackages/`) — `continia deps download` writes here
 - Match the symbol package versions to the environment's BC version
 
 ### Do Not Call banking-demo Management Codeunits
