@@ -10,9 +10,12 @@ This is the authoritative format for the human-readable recording script. The au
 ## Overview
 One or two sentences describing what this demo shows the viewer.
 
-## Before you record (prerequisites)
+## Before you record (starting state)
+State only what is ALREADY true — the pipeline has provisioned the environment, published the PTE,
+and any needed demo app. Do NOT list setup the presenter must perform (no "install …", no "create …
+first"). If the presenter creates data, it belongs in Steps as an on-camera action, not here.
 - The demo environment is open and you are signed in.
-- <data/setup required, e.g. "At least one bank account reconciliation exists with imported lines">
+- <data that already exists, e.g. "The demo company has a bank account reconciliation with imported lines">
 - <expected starting state, e.g. "Statement lines are in the default fewer-columns mode">
 
 ## Starting point
@@ -62,6 +65,6 @@ Open page **<Page Caption>** directly: `<bc-url>/?page=<pageId>`
 - [ ] Non-promoted actions have a preceding "open the tab" step.
 - [ ] List navigation says "click the Nth row", not "click Edit".
 - [ ] Each step has Where / Do / You'll see (and a Say hint where it helps).
-- [ ] Prerequisites list all data, setup, and expected starting/toggle state.
+- [ ] "Before you record" states only the already-true starting state — no "install"/"create first" chores.
 - [ ] Steps that edit fields tell the creator to enter Edit mode first.
 - [ ] Dialog/StrMenu selections include the follow-up OK/Cancel step.

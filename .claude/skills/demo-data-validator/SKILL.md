@@ -39,8 +39,14 @@ Each sub-agent returns a JSON list of findings:
 ### Sub-agent 1 — Script ↔ data coherency
 Cross-check every entity and value the script tells the recorder to open, select, or type against
 what the PTE actually inserts. **Blocker** when a script step depends on a record/value the PTE does
-not create. **Warning** when the PTE seeds entities the script never uses (dead data) — unless they
-are required prerequisites.
+not create. **Warning** when the PTE seeds entities the script never uses (dead data).
+
+**Blocker — no user prerequisites.** The pipeline provides all data and setup. Flag as a **blocker**
+any script content (including the "Before you record" / prerequisites section, narration, or gaps)
+that tells the user to install an app, publish an extension, or create/prepare setup data before
+recording (e.g. "install banking-demo first", "G/L account 8210 must exist"). The fix is to create
+the data in the PTE or publish `banking-demo` in the pipeline — not to instruct the user. The only
+records the presenter may create are those whose creation IS an on-camera demo step.
 
 ### Sub-agent 2 — Value realism
 Inspect every field value the PTE sets. Flag placeholder/gibberish values (`TEST`, `asdf`, `xxx`,
@@ -62,6 +68,9 @@ from `demo-data-orchestrator`:
 - **Mine the automated tests** (`*-test/Libraries/` `Create*` procedures and `Initialize()`) for the
   same feature — tests routinely create setup records in unrelated tables that the static relation
   trace misses. Any table the tests create but the PTE omits is a **blocker** until proven unneeded.
+
+Remediate every gap by creating the record in the PTE or (for baseline demo-company data) having the
+pipeline publish `banking-demo` — never by listing it as a user prerequisite.
 
 ### Sub-agent 4 — Pedagogical fit
 Judge whether the data + script support a **detailed, step-by-step learning video for an end customer

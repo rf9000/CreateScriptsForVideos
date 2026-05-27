@@ -129,7 +129,7 @@ Read `references/al-template.md` for the exact structure. The output is a folder
 
 11. **Minimal data** — Only create records the demo flow actually touches. 2-3 records per entity type.
 
-12. **Complex setup** — For flagged tables (bank system import, auth), add a comment block explaining the manual steps required. Reference `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al`.
+12. **Complex setup — never punt to the user.** For flagged tables (bank system import, auth), create the records directly in the PTE (use the internal-access dependency to reach `Access = Internal` tables), modelling them on `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al`. If the data is baseline demo-company data that the PTE can't reasonably reproduce, rely on the orchestrator publishing the `banking-demo` app to the environment (deploy step) — do NOT emit "must exist before recording" / "install X first" prerequisites.
 
 13. **Internal access via dependency (NOT internalsVisibleTo).** All CTS-CB tables/enums/codeunits are `Access = Internal`. The PTE gains access by depending on the **"Continia Banking Internal Access"** app (`6e549e35-d1b2-4878-a37a-a736c22f35bf`) declared in `app.json` (see step 1). Do **NOT** modify `base-application/app.json` or any other file in the read-only continia-banking repo.
 
@@ -150,8 +150,11 @@ Read `references/al-template.md` for the exact structure. The output is a folder
 - **Step 6 — Build the Script Header & Narration Hints** — Header with feature name, starting page + ID, overview, prerequisites; plus per-step "Say:" narration hints.
 - **Step 7 — Write and Present** — Write the Markdown to the caller-provided output directory as `<feature-kebab-case>.md`.
 
-**Additional prerequisite:** In the script's prerequisites section, add a line noting the demo data extension must be published:
-- "The demo-data PTE has been compiled and published to the environment."
+**Prerequisites describe the starting STATE, not chores.** The pipeline has already provisioned the
+environment, published the PTE, and (when needed) the `banking-demo` app — so the script's
+"Before you record" section states what is already true (e.g. "The demo company has bank accounts A
+and B with imported statement lines"), NOT setup the presenter must perform. Never write "install X"
+or "create Y first." The only things the presenter creates are on-camera demo steps.
 
 ---
 

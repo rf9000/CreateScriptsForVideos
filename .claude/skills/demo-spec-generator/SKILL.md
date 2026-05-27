@@ -120,7 +120,7 @@ The script opens with a header section the recorder reads before starting:
 | Starting point | Page caption + **page ID** (so they can open it directly) |
 | App | Monorepo folder name |
 | Overview | 1-2 sentences on what the demo shows |
-| Prerequisites | All data, setup, AND expected toggle/state (e.g., "Statement lines start in fewer-columns mode") |
+| Before you record | The already-true starting state + expected toggle/state (e.g., "Statement lines start in fewer-columns mode"). NOT setup chores — never "install …" / "create … first". |
 
 Each step may include a **narration hint** — a natural sentence the recorder can say while performing the step:
 

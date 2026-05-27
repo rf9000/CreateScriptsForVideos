@@ -25,6 +25,16 @@ literally; always reference the env var. This removes any dependency on VS Code 
 - The PTE gains internal access by **depending on the "Continia Banking Internal Access" app**
   (id `6e549e35-d1b2-4878-a37a-a736c22f35bf`). Do NOT add `internalsVisibleTo` to or otherwise modify
   base-application.
+- **The pipeline provides ALL demo data and setup — never ask the user for prerequisites.** Everything
+  the demo needs must be created by the PTE or published to the environment by this pipeline. The only
+  actions the recording script asks of the presenter are the on-camera steps that demonstrate the
+  feature; the presenter creates data only when creating it IS part of showing the feature. Never emit
+  a prerequisite/gap like "install app X first" or "G/L account N must exist before recording."
+- **Baseline demo-company data** (standard G/L accounts, chart of accounts, search-field templates,
+  transaction details, …) comes from the Continia demo app (`banking-demo`). Use it as the data
+  reference, and if the demo needs it installed, **publish it to the environment yourself** (publish
+  from source as a dev extension, the same way the other Continia apps are published) — never as a
+  user prerequisite.
 - Create a **fresh environment for this item and leave it running** — never delete it.
 - If a step fails irrecoverably, stop and return a `failed` result with a clear `errorMessage`.
 
@@ -42,7 +52,9 @@ literally; always reference the env var. This removes any dependency on VS Code 
    warnings/suggestions into the result's `gaps`.
 4. **Provision the environment.** Use `continia-env-setup` to create and start a fresh environment.
 5. **Deploy.** Use `continia-deps` to download symbols and `continia-deploy` to compile and publish
-   the PTE (with its dependencies) onto the environment. Fix compile errors and retry as needed.
+   the PTE (with its dependencies) onto the environment. Fix compile errors and retry as needed. If
+   the demo relies on baseline demo-company data, also publish the `banking-demo` app to the
+   environment here (publish-from-source) so that data exists — never leave it as a user prerequisite.
 6. **Verify** the environment is running and the PTE is installed (`continia-test` / `continia env`
    commands as appropriate).
 7. **Collect environment details** — id, name, URL, username, password (`continia env users`).
