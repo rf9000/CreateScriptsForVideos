@@ -130,6 +130,9 @@ function buildOptions(config: AppConfig): Record<string, unknown> {
     maxTurns: config.agentMaxTurns,
     tools: { type: 'preset', preset: 'claude_code' },
     allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill', 'Task'],
+    // Pass the continia.exe API token to the agent's subprocess environment so
+    // `continia --token $CONTINIA_API_TOKEN ...` works without VS Code.
+    env: { ...process.env, CONTINIA_API_TOKEN: config.continiaApiToken },
   };
   if (config.lspPluginPath) {
     options.plugins = [{ type: 'local', path: config.lspPluginPath }];

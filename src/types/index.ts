@@ -16,6 +16,8 @@ export interface AppConfig {
   createScriptTag: string;
   /** Path to the read-only continia-banking clone (LSP navigation root). */
   continiaBankingPath: string;
+  /** API token for continia.exe (passed as the global --token option). */
+  continiaApiToken: string;
   /** Writable root for the generated .md recording script. */
   workspaceOutputDir: string;
   /** Writable base path where the PTE AL project is created before publishing. */

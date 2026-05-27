@@ -150,5 +150,12 @@ describe("loadConfig", () => {
       const config = loadConfig({ ...validEnv, LSP_PLUGIN_PATH: "/plugins/lsp" });
       expect(config.lspPluginPath).toBe("/plugins/lsp");
     });
+
+    it("reads CONTINIA_API_TOKEN and defaults it to empty", () => {
+      expect(loadConfig(validEnv).continiaApiToken).toBe("");
+      expect(
+        loadConfig({ ...validEnv, CONTINIA_API_TOKEN: "tok-123" }).continiaApiToken,
+      ).toBe("tok-123");
+    });
   });
 });

@@ -10,6 +10,13 @@ Produce three things, then report a structured JSON result:
 2. A **demo-data PTE** (Per-Tenant Extension AL project) that installs all data the demo needs.
 3. A **fresh BC environment** with Continia Banking + the PTE published and left running.
 
+## Authentication
+
+Every `continia.exe` command must authenticate with the global `--token` option, reading the value
+from the `CONTINIA_API_TOKEN` environment variable — e.g. `continia --token "$CONTINIA_API_TOKEN" env list --json`
+(PowerShell: `continia --token $env:CONTINIA_API_TOKEN env list --json`). Never paste the token
+literally; always reference the env var. This removes any dependency on VS Code settings.
+
 ## Hard rules
 
 - **continia-banking is READ-ONLY.** Navigate and read it freely (LSP, tests), but NEVER create,

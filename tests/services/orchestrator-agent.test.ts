@@ -25,6 +25,7 @@ function mockConfig(): AppConfig {
     repoIds: [],
     createScriptTag: 'create script',
     continiaBankingPath: '/repos/banking',
+    continiaApiToken: '',
     workspaceOutputDir: '/work/output',
     pteOutputDir: '/work/pte',
     lspPluginPath: '/plugins/lsp',
@@ -194,5 +195,21 @@ describe('runOrchestrator', () => {
     expect(captured!.options.permissionMode).toBe('bypassPermissions');
     // banking clone is exposed read-only; tools must be granted for an agentic loop
     expect(Array.isArray(captured!.options.allowedTools)).toBe(true);
+  });
+
+  test('exposes the continia API token to the agent subprocess env', async () => {
+    let captured: { options: Record<string, unknown> } | undefined;
+    const query = (params: { prompt: string; options: Record<string, unknown> }) => {
+      captured = params;
+      return (async function* () {
+        yield { type: 'result', subtype: 'success', result: '{"status":"success"}' } as AgentMessage;
+      })();
+    };
+    const config = { ...mockConfig(), continiaApiToken: 'tok-xyz' };
+
+    await runOrchestrator(config, baseContext, { query });
+
+    const env = captured!.options.env as Record<string, string>;
+    expect(env.CONTINIA_API_TOKEN).toBe('tok-xyz');
   });
 });
