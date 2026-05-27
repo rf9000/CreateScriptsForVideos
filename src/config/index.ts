@@ -18,6 +18,7 @@ const envSchema = z.object({
   LSP_PLUGIN_PATH: z.string().default(""),
   POLL_INTERVAL_MINUTES: z.coerce.number().default(5),
   AGENT_MAX_TURNS: z.coerce.number().default(120),
+  OUTPUT_RETENTION_DAYS: z.coerce.number().int().min(0).default(14),
   CLAUDE_MODEL: z.string().default("claude-sonnet-4-6"),
   PROMPT_PATH: z.string().default(".claude/commands/create-script.md"),
 });
@@ -56,5 +57,6 @@ export function loadConfig(
     pteOutputDir: parsed.PTE_OUTPUT_DIR ?? workspaceOutputDir,
     lspPluginPath: parsed.LSP_PLUGIN_PATH,
     agentMaxTurns: parsed.AGENT_MAX_TURNS,
+    outputRetentionDays: parsed.OUTPUT_RETENTION_DAYS,
   };
 }

@@ -23,6 +23,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     pteOutputDir: './output',
     lspPluginPath: '',
     agentMaxTurns: 120,
+    outputRetentionDays: 14,
     ...overrides,
   };
 }
