@@ -27,11 +27,13 @@ services:
       - /home/azureuser/tools/al/al-ext/extension/bin:/opt/al/bin:ro
       # AL language-server plugin (linux variant of al-language-server from claude-code-lsps)
       - /home/azureuser/tools/claude-code-lsps/al-language-server-go-linux:/opt/al-lsp-plugin:ro
-      # Persisted state and generated output
+      # Processed-item state (internal JSON — named volume is fine)
       - create-scripts-state:/app/.state
-      - create-scripts-output:/app/output
+      # Generated output (PTE + script) — bind-mounted to a host folder so it's
+      # browsable directly (e.g. via WinSCP). Container writes as the `claude`
+      # user, so the host folder ends up owned by uid 1001.
+      - /home/azureuser/output:/app/output
     restart: unless-stopped
 
 volumes:
   create-scripts-state:
-  create-scripts-output:

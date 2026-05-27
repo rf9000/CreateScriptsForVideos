@@ -26,6 +26,7 @@ This mirrors the investigate tool's deployment. The differences, all because thi
 
 ```
 ~/repos/continia-banking/                         # cloned once, mounted :ro (shared with investigate)
+~/output/                                          # generated PTEs + scripts, per work item (browsable)
 ~/tools/continia-linux                            # the linux CLI binary (chmod +x)
 ~/tools/al/al-ext/extension/bin/                  # AL compiler: linux/alc + Analyzers/ (from the .vsix)
 ~/tools/claude-code-lsps/al-language-server-go-linux/   # AL language-server plugin (linux)
@@ -133,3 +134,7 @@ same way here.
   retries can spin up several per item.
 - **Never write into continia-banking:** `PTE_OUTPUT_DIR`/`WORKSPACE_OUTPUT_DIR` point at the
   writable `/app/output` volume, separate from the `:ro` banking mount. Keep it that way.
+- **Output is browsable on the host:** `/app/output` is bind-mounted to `~/output`, so each
+  item's PTE + script land at `~/output/<workItemId>/`. The container writes as the `claude`
+  user (uid 1001), so files there are owned by uid 1001 — readable by azureuser; use `sudo` to
+  delete. Create the folder before first start: `mkdir -p ~/output`.
