@@ -46,6 +46,7 @@ function makeDeps(overrides: Partial<WatcherDeps> = {}): WatcherDeps {
   return {
     fetchItems: mock(() => Promise.resolve([])),
     processItem: mock(() => Promise.resolve({ itemId: 0, processed: true })),
+    pruneOutputs: mock(() => 0),
     ...overrides,
   };
 }
@@ -104,6 +105,22 @@ describe('runPollCycle', () => {
     const result = await runPollCycle(mockConfig(), deps);
 
     expect(result).toEqual({ processed: 0, errors: 1, costUsd: 0 });
+  });
+
+  test('prunes outputs once per cycle when retention is enabled', async () => {
+    const deps = makeDeps();
+
+    await runPollCycle(mockConfig({ outputRetentionDays: 14 }), deps);
+
+    expect(deps.pruneOutputs).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not prune when retention is disabled (0)', async () => {
+    const deps = makeDeps();
+
+    await runPollCycle(mockConfig({ outputRetentionDays: 0 }), deps);
+
+    expect(deps.pruneOutputs).toHaveBeenCalledTimes(0);
   });
 
   test('aggregates the USD cost across items', async () => {
