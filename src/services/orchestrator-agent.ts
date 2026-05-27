@@ -1,0 +1,183 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
+import type { AppConfig, ScriptResult } from '../types/index.ts';
+
+/** GUID of the "Continia Banking Internal Access" app the PTE depends on. */
+export const INTERNAL_ACCESS_APP_ID = '6e549e35-d1b2-4878-a37a-a736c22f35bf';
+
+export interface OrchestratorContext {
+  itemId: number;
+  itemTitle: string;
+  itemType: string;
+  itemDescription: string;
+  comments: string[];
+}
+
+/** Minimal subset of the SDK message stream we consume. */
+export interface AgentMessage {
+  type: string;
+  subtype?: string;
+  result?: string;
+  total_cost_usd?: number;
+  num_turns?: number;
+  usage?: { input_tokens?: number; output_tokens?: number };
+}
+
+export interface OrchestratorDeps {
+  query: (params: {
+    prompt: string;
+    options: Record<string, unknown>;
+  }) => AsyncIterable<AgentMessage>;
+}
+
+const defaultDeps: OrchestratorDeps = {
+  query: sdkQuery as unknown as OrchestratorDeps['query'],
+};
+
+function log(message: string): void {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  console.log(`[${ts}] ${message}`);
+}
+
+/** Build the user prompt carrying the work item context. */
+export function buildOrchestratorPrompt(context: OrchestratorContext): string {
+  const lines: string[] = [
+    `## Work Item #${context.itemId}`,
+    `**Type:** ${context.itemType}`,
+    `**Title:** ${context.itemTitle}`,
+  ];
+
+  if (context.itemDescription) {
+    lines.push('', '## Description', context.itemDescription);
+  }
+
+  if (context.comments.length > 0) {
+    lines.push('', '## Comments');
+    for (const comment of context.comments) {
+      lines.push(`- ${comment}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/** Append the resolved runtime paths/IDs the agent must use for this item. */
+function buildRuntimeBlock(config: AppConfig, itemId: number): string {
+  const scriptDir = join(config.workspaceOutputDir, String(itemId));
+  const pteDir = join(config.pteOutputDir, String(itemId));
+  return [
+    '',
+    '## Runtime configuration (use these exact paths)',
+    `- Continia Banking repo (READ-ONLY, never write/delete): ${config.continiaBankingPath}`,
+    `- Write the .md recording script to: ${join(scriptDir, 'script.md')}`,
+    `- Create the demo-data PTE AL project in: ${pteDir}`,
+    `- The PTE must depend on the "Continia Banking Internal Access" app (id ${INTERNAL_ACCESS_APP_ID}); do NOT edit continia-banking to gain internal access.`,
+    '- Create a fresh environment for this item and leave it running.',
+    '',
+    'When finished, output a single fenced ```json block as the LAST thing in your reply,',
+    'matching: {"status":"success"|"failed","feature":string,"scriptPath":string,',
+    '"ptePath":string,"env":{"id","name","url","username","password"},',
+    '"assumptions":string[],"gaps":string[],"errorMessage":string}.',
+  ].join('\n');
+}
+
+/**
+ * Extract the structured result from the agent's final reply. Accepts a raw
+ * JSON object, or a fenced ```json block embedded in prose. Falls back to a
+ * failed result when nothing parseable is found.
+ */
+export function parseResult(raw: string): ScriptResult {
+  const candidate = extractJson(raw);
+  if (candidate !== undefined) {
+    try {
+      const obj = JSON.parse(candidate) as ScriptResult;
+      if (obj.status === 'success' || obj.status === 'failed') {
+        return obj;
+      }
+    } catch {
+      // fall through to failure
+    }
+  }
+  return {
+    status: 'failed',
+    errorMessage: `Could not parse a result from the agent output: ${raw.slice(0, 200)}`,
+  };
+}
+
+function extractJson(raw: string): string | undefined {
+  const fenceMatches = [...raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
+  if (fenceMatches.length > 0) {
+    return fenceMatches[fenceMatches.length - 1]![1]!.trim();
+  }
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    return raw.slice(first, last + 1);
+  }
+  return undefined;
+}
+
+function buildOptions(config: AppConfig): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    model: config.claudeModel,
+    systemPrompt: readFileSync(config.promptPath, 'utf-8'),
+    settingSources: ['project'],
+    cwd: config.workspaceOutputDir,
+    additionalDirectories: [config.continiaBankingPath],
+    permissionMode: 'bypassPermissions',
+    allowDangerouslySkipPermissions: true,
+    maxTurns: config.agentMaxTurns,
+    tools: { type: 'preset', preset: 'claude_code' },
+    allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill', 'Task'],
+  };
+  if (config.lspPluginPath) {
+    options.plugins = [{ type: 'local', path: config.lspPluginPath }];
+  }
+  return options;
+}
+
+/** Run the agentic orchestration loop for one work item and return its result. */
+export async function runOrchestrator(
+  config: AppConfig,
+  context: OrchestratorContext,
+  deps: OrchestratorDeps = defaultDeps,
+): Promise<ScriptResult> {
+  const prompt =
+    buildOrchestratorPrompt(context) + '\n' + buildRuntimeBlock(config, context.itemId);
+  const options = buildOptions(config);
+
+  let resultText: string | undefined;
+  let failureSubtype: string | undefined;
+  let costUsd: number | undefined;
+
+  for await (const message of deps.query({ prompt, options })) {
+    if (message.type === 'result') {
+      if (message.total_cost_usd !== undefined) {
+        costUsd = message.total_cost_usd;
+        log(
+          `  Cost: $${message.total_cost_usd.toFixed(4)} | ` +
+            `${message.usage?.input_tokens ?? 0} in / ${message.usage?.output_tokens ?? 0} out | ` +
+            `${message.num_turns ?? 0} turns`,
+        );
+      }
+      if (message.subtype === 'success') {
+        resultText = message.result;
+      } else {
+        failureSubtype = message.subtype;
+      }
+    }
+  }
+
+  if (resultText !== undefined) {
+    const result = parseResult(resultText);
+    result.costUsd = costUsd;
+    return result;
+  }
+
+  return {
+    status: 'failed',
+    errorMessage: `Agent ended without a success result (${failureSubtype ?? 'no result message'})`,
+    costUsd,
+  };
+}

@@ -19,6 +19,14 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     promptPath: './prompt.md',
     stateDir: '.state',
     dryRun: false,
+    repoIds: [],
+    createScriptTag: 'create script',
+    continiaBankingPath: './continia-banking',
+    workspaceOutputDir: './output',
+    pteOutputDir: './output',
+    lspPluginPath: '',
+    agentMaxTurns: 120,
+    maxProcessAttempts: 3,
     ...overrides,
   };
 }
@@ -67,7 +75,7 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 0, errors: 0 });
+    expect(result).toEqual({ processed: 0, errors: 0, costUsd: 0 });
     expect(deps.fetchItems).toHaveBeenCalledTimes(1);
     expect(deps.processItem).toHaveBeenCalledTimes(0);
   });
@@ -85,7 +93,7 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 1, errors: 0 });
+    expect(result).toEqual({ processed: 1, errors: 0, costUsd: 0 });
     expect(deps.processItem).toHaveBeenCalledTimes(1);
     expect(stateStore.isProcessed(101)).toBe(true);
 
@@ -106,7 +114,7 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 0, errors: 0 });
+    expect(result).toEqual({ processed: 0, errors: 0, costUsd: 0 });
     expect(deps.processItem).toHaveBeenCalledTimes(0);
   });
 
@@ -121,7 +129,7 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 0, errors: 1 });
+    expect(result).toEqual({ processed: 0, errors: 1, costUsd: 0 });
     expect(stateStore.isProcessed(300)).toBe(false);
   });
 
@@ -138,8 +146,53 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 0, errors: 1 });
+    expect(result).toEqual({ processed: 0, errors: 1, costUsd: 0 });
     expect(stateStore.isProcessed(400)).toBe(false);
+  });
+
+  test('gives up and stops retrying after maxProcessAttempts failures', async () => {
+    const config = mockConfig({ maxProcessAttempts: 2 });
+    const item = mockWorkItem({ id: 600 });
+    const notifyGaveUp = mock(() => Promise.resolve());
+
+    const deps = makeDeps({
+      fetchItems: mock(() => Promise.resolve([item])),
+      processItem: mock(() =>
+        Promise.resolve({ itemId: 600, processed: false, error: 'boom' }),
+      ),
+      notifyGaveUp,
+    });
+
+    // First cycle: one failed attempt, still below the cap → not given up.
+    await runPollCycle(config, stateStore, deps);
+    expect(stateStore.isProcessed(600)).toBe(false);
+    expect(notifyGaveUp).toHaveBeenCalledTimes(0);
+
+    // Second cycle: reaches the cap → notify + mark processed to stop retrying.
+    await runPollCycle(config, stateStore, deps);
+    expect(notifyGaveUp).toHaveBeenCalledTimes(1);
+    expect(stateStore.isProcessed(600)).toBe(true);
+
+    // Third cycle: already processed → no further processing.
+    await runPollCycle(config, stateStore, deps);
+    expect(deps.processItem).toHaveBeenCalledTimes(2);
+  });
+
+  test('aggregates the USD cost across processed items', async () => {
+    const config = mockConfig();
+    const itemA = mockWorkItem({ id: 701 });
+    const itemB = mockWorkItem({ id: 702 });
+
+    const deps = makeDeps({
+      fetchItems: mock(() => Promise.resolve([itemA, itemB])),
+      processItem: mock((cfg: AppConfig, item: WorkItemResponse) =>
+        Promise.resolve({ itemId: item.id, processed: true, costUsd: 0.25 }),
+      ),
+    });
+
+    const result = await runPollCycle(config, stateStore, deps);
+
+    expect(result.costUsd).toBeCloseTo(0.5, 5);
   });
 
   test('multiple items processes each one', async () => {
@@ -157,7 +210,7 @@ describe('runPollCycle', () => {
 
     const result = await runPollCycle(config, stateStore, deps);
 
-    expect(result).toEqual({ processed: 3, errors: 0 });
+    expect(result).toEqual({ processed: 3, errors: 0, costUsd: 0 });
     expect(deps.fetchItems).toHaveBeenCalledTimes(1);
     expect(deps.processItem).toHaveBeenCalledTimes(3);
     expect(stateStore.isProcessed(501)).toBe(true);

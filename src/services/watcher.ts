@@ -6,6 +6,7 @@ import type {
 import { StateStore } from '../state/state-store.ts';
 import * as sdk from '../sdk/azure-devops-client.ts';
 import * as proc from './processor.ts';
+import { linksRepo } from './work-item-filter.ts';
 
 export interface WatcherDeps {
   fetchItems: (
@@ -16,17 +17,39 @@ export interface WatcherDeps {
     config: AppConfig,
     item: WorkItemResponse,
   ) => Promise<ItemProcessResult>;
+
+  /** Called when an item has failed maxProcessAttempts times and is being abandoned. */
+  notifyGaveUp?: (
+    config: AppConfig,
+    item: WorkItemResponse,
+    attempts: number,
+  ) => Promise<void>;
 }
 
 async function defaultFetchItems(config: AppConfig): Promise<WorkItemResponse[]> {
-  const ids = await sdk.queryWorkItems(config, config.wiqlQuery);
+  const ids = await sdk.queryWorkItemsByTag(config);
   if (ids.length === 0) return [];
-  return sdk.getWorkItemsBatch(config, ids);
+  const items = await sdk.getWorkItemsBatch(config, ids);
+  return items.filter((item) => linksRepo(item, config.repoIds));
+}
+
+async function defaultNotifyGaveUp(
+  config: AppConfig,
+  item: WorkItemResponse,
+  attempts: number,
+): Promise<void> {
+  await sdk.addWorkItemComment(
+    config,
+    item.id,
+    `Script generation failed ${attempts} times and will not be retried automatically. ` +
+      `Please review and re-tag the work item to try again.`,
+  );
 }
 
 const defaultDeps: WatcherDeps = {
   fetchItems: defaultFetchItems,
   processItem: proc.processItem,
+  notifyGaveUp: defaultNotifyGaveUp,
 };
 
 function log(message: string): void {
@@ -38,9 +61,10 @@ export async function runPollCycle(
   config: AppConfig,
   stateStore: StateStore,
   deps: WatcherDeps = defaultDeps,
-): Promise<{ processed: number; errors: number }> {
+): Promise<{ processed: number; errors: number; costUsd: number }> {
   let totalProcessed = 0;
   let totalErrors = 0;
+  let totalCostUsd = 0;
 
   log('Polling for items...');
 
@@ -50,12 +74,17 @@ export async function runPollCycle(
   log(`  Found ${items.length} items, ${newItems.length} unprocessed`);
 
   for (const item of newItems) {
+    const attempts = stateStore.recordAttempt(item.id);
+    let succeeded = false;
+
     try {
       const result = await deps.processItem(config, item);
+      totalCostUsd += result.costUsd ?? 0;
 
       if (result.processed) {
         stateStore.markProcessed(item.id);
         totalProcessed++;
+        succeeded = true;
       } else {
         totalErrors++;
       }
@@ -63,10 +92,20 @@ export async function runPollCycle(
       log(`  Item #${item.id}: Fatal error — ${err}`);
       totalErrors++;
     }
+
+    if (!succeeded && attempts >= config.maxProcessAttempts) {
+      log(`  Item #${item.id}: Giving up after ${attempts} attempts`);
+      try {
+        await (deps.notifyGaveUp ?? defaultNotifyGaveUp)(config, item, attempts);
+      } catch (err) {
+        log(`  Item #${item.id}: Failed to post give-up comment — ${err}`);
+      }
+      stateStore.markProcessed(item.id);
+    }
   }
 
   stateStore.save();
-  return { processed: totalProcessed, errors: totalErrors };
+  return { processed: totalProcessed, errors: totalErrors, costUsd: totalCostUsd };
 }
 
 function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
@@ -100,7 +139,10 @@ export async function startWatcher(config: AppConfig): Promise<void> {
   while (!signal.aborted) {
     try {
       const result = await runPollCycle(config, stateStore);
-      log(`Cycle complete: ${result.processed} processed, ${result.errors} errors`);
+      log(
+        `Cycle complete: ${result.processed} processed, ${result.errors} errors, ` +
+          `$${result.costUsd.toFixed(4)} total cost`,
+      );
     } catch (err) {
       log(`Cycle failed: ${err}`);
     }

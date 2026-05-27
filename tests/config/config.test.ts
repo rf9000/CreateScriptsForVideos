@@ -38,9 +38,9 @@ describe("loadConfig", () => {
   it("applies default values when optional vars are absent", () => {
     const config = loadConfig(validEnv);
 
-    expect(config.pollIntervalMinutes).toBe(15);
+    expect(config.pollIntervalMinutes).toBe(5);
     expect(config.claudeModel).toBe("claude-sonnet-4-6");
-    expect(config.promptPath).toBe(".claude/commands/do-process-item.md");
+    expect(config.promptPath).toBe(".claude/commands/create-script.md");
     expect(config.stateDir).toBe(".state");
   });
 
@@ -81,5 +81,74 @@ describe("loadConfig", () => {
     const env = { ...validEnv, AZURE_DEVOPS_ORG: "contoso" };
     const config = loadConfig(env);
     expect(config.orgUrl).toBe("https://dev.azure.com/contoso");
+  });
+
+  describe("script-generator config", () => {
+    it("parses AZURE_DEVOPS_REPO_IDS into a trimmed array", () => {
+      const env = {
+        ...validEnv,
+        AZURE_DEVOPS_REPO_IDS: "a838fce3-3b9c-4c78-beec-cb4cf5983144, 6e549e35-d1b2 ,  ",
+      };
+      const config = loadConfig(env);
+      expect(config.repoIds).toEqual([
+        "a838fce3-3b9c-4c78-beec-cb4cf5983144",
+        "6e549e35-d1b2",
+      ]);
+    });
+
+    it("defaults repoIds to an empty array", () => {
+      const config = loadConfig(validEnv);
+      expect(config.repoIds).toEqual([]);
+    });
+
+    it("defaults createScriptTag to 'create script'", () => {
+      expect(loadConfig(validEnv).createScriptTag).toBe("create script");
+    });
+
+    it("overrides createScriptTag via CREATE_SCRIPT_TAG", () => {
+      const config = loadConfig({ ...validEnv, CREATE_SCRIPT_TAG: "record-me" });
+      expect(config.createScriptTag).toBe("record-me");
+    });
+
+    it("reads CONTINIA_BANKING_PATH", () => {
+      const config = loadConfig({ ...validEnv, CONTINIA_BANKING_PATH: "/repos/banking" });
+      expect(config.continiaBankingPath).toBe("/repos/banking");
+    });
+
+    it("defaults workspaceOutputDir to ./output and overrides it", () => {
+      expect(loadConfig(validEnv).workspaceOutputDir).toBe("./output");
+      expect(
+        loadConfig({ ...validEnv, WORKSPACE_OUTPUT_DIR: "/tmp/out" }).workspaceOutputDir,
+      ).toBe("/tmp/out");
+    });
+
+    it("defaults pteOutputDir to workspaceOutputDir when PTE_OUTPUT_DIR absent", () => {
+      const config = loadConfig({ ...validEnv, WORKSPACE_OUTPUT_DIR: "/tmp/out" });
+      expect(config.pteOutputDir).toBe("/tmp/out");
+    });
+
+    it("uses PTE_OUTPUT_DIR when provided", () => {
+      const config = loadConfig({
+        ...validEnv,
+        WORKSPACE_OUTPUT_DIR: "/tmp/out",
+        PTE_OUTPUT_DIR: "/tmp/pte",
+      });
+      expect(config.pteOutputDir).toBe("/tmp/pte");
+    });
+
+    it("defaults agentMaxTurns to 120 and coerces overrides", () => {
+      expect(loadConfig(validEnv).agentMaxTurns).toBe(120);
+      expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "200" }).agentMaxTurns).toBe(200);
+    });
+
+    it("defaults maxProcessAttempts to 3 and coerces overrides", () => {
+      expect(loadConfig(validEnv).maxProcessAttempts).toBe(3);
+      expect(loadConfig({ ...validEnv, MAX_PROCESS_ATTEMPTS: "5" }).maxProcessAttempts).toBe(5);
+    });
+
+    it("reads LSP_PLUGIN_PATH", () => {
+      const config = loadConfig({ ...validEnv, LSP_PLUGIN_PATH: "/plugins/lsp" });
+      expect(config.lspPluginPath).toBe("/plugins/lsp");
+    });
   });
 });

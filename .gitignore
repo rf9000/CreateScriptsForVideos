@@ -6,3 +6,9 @@ coverage/
 .state/
 .cache/
 .DS_Store
+
+# Tooling binaries and generated output (never commit the continia CLI or its token)
+.tools/
+.claude/.tools/
+*.exe
+output/

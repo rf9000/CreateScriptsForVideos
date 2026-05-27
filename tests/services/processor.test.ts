@@ -1,20 +1,29 @@
 import { describe, test, expect, mock } from 'bun:test';
-import type { AppConfig, WorkItemResponse } from '../../src/types/index.ts';
+import type { AppConfig, WorkItemResponse, ScriptResult } from '../../src/types/index.ts';
 import { processItem } from '../../src/services/processor.ts';
 import type { ProcessorDeps } from '../../src/services/processor.ts';
 
-function mockConfig(): AppConfig {
+function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     org: 'my-org',
     orgUrl: 'https://dev.azure.com/my-org',
     project: 'my-project',
     pat: 'test-pat-token',
-    wiqlQuery: "SELECT [System.Id] FROM workitems WHERE [System.State] = 'New'",
+    wiqlQuery: 'q',
     pollIntervalMinutes: 5,
     claudeModel: 'claude-sonnet-4-6',
-    promptPath: './prompt.md',
+    promptPath: '.claude/commands/create-script.md',
     stateDir: '.state',
     dryRun: false,
+    repoIds: [],
+    createScriptTag: 'create script',
+    continiaBankingPath: './continia-banking',
+    workspaceOutputDir: './output',
+    pteOutputDir: './output',
+    lspPluginPath: '',
+    agentMaxTurns: 120,
+    maxProcessAttempts: 3,
+    ...overrides,
   };
 }
 
@@ -22,10 +31,9 @@ function mockWorkItem(overrides: Partial<WorkItemResponse> = {}): WorkItemRespon
   return {
     id: 42,
     fields: {
-      'System.Title': 'Fix login bug',
-      'System.WorkItemType': 'Bug',
-      'System.Description': 'The login page has a timeout issue.',
-      'System.State': 'New',
+      'System.Title': 'Demo merge rules',
+      'System.WorkItemType': 'Product Backlog Item',
+      'System.Description': 'Show how to create a merge rule.',
     },
     rev: 1,
     url: 'https://example.com/42',
@@ -33,107 +41,137 @@ function mockWorkItem(overrides: Partial<WorkItemResponse> = {}): WorkItemRespon
   };
 }
 
+const successResult: ScriptResult = {
+  status: 'success',
+  feature: 'Merge Rules',
+  scriptPath: '/work/output/42/script.md',
+  ptePath: '/work/pte/42',
+  env: {
+    id: 'env-1',
+    name: 'Demo Env',
+    url: 'https://env.example.com',
+    username: 'admin',
+    password: 'p@ssw0rd',
+  },
+  costUsd: 0.5,
+};
+
 function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
   return {
-    updateWorkItemField: mock(() =>
-      Promise.resolve({
-        id: 42,
-        fields: {},
-        rev: 2,
-        url: 'https://example.com/42',
-      }),
-    ),
-    generateWithAI: mock(() => Promise.resolve('Generated output')),
+    fetchComments: mock(async () => ['Use DK localization']),
+    runOrchestrator: mock(async () => successResult),
+    readScript: mock(() => '# Recording Script\n\nStep 1...'),
+    uploadAttachment: mock(async () => ({ id: 'att-1', url: 'https://att/att-1' })),
+    linkAttachment: mock(async () => ({}) as WorkItemResponse),
+    addComment: mock(async () => {}),
+    report: mock(() => {}),
     ...overrides,
   };
 }
 
-describe('processItem', () => {
-  test('generates AI output and updates work item', async () => {
-    const config = mockConfig();
-    const item = mockWorkItem();
+describe('processItem — success', () => {
+  test('passes fetched comments into the orchestrator context', async () => {
     const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
 
-    const result = await processItem(config, item, deps);
-
-    expect(result).toEqual({ itemId: 42, processed: true });
-    expect(deps.generateWithAI).toHaveBeenCalledTimes(1);
-    expect(deps.updateWorkItemField).toHaveBeenCalledTimes(1);
+    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const context = call[1] as { comments: string[]; itemTitle: string };
+    expect(context.comments).toEqual(['Use DK localization']);
+    expect(context.itemTitle).toBe('Demo merge rules');
   });
 
-  test('passes correct context to AI generator', async () => {
-    const config = mockConfig();
-    const item = mockWorkItem();
+  test('uploads the script file content as an attachment', async () => {
     const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
 
-    await processItem(config, item, deps);
-
-    const genCall = (deps.generateWithAI as ReturnType<typeof mock>).mock.calls[0]!;
-    const context = genCall[1];
-    expect(context.itemTitle).toBe('Fix login bug');
-    expect(context.itemType).toBe('Bug');
-    expect(context.itemDescription).toBe('The login page has a timeout issue.');
+    expect(deps.readScript).toHaveBeenCalledWith('/work/output/42/script.md');
+    const upload = (deps.uploadAttachment as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(upload[2]).toBe('# Recording Script\n\nStep 1...');
   });
 
-  test('returns error result when AI generation fails', async () => {
-    const config = mockConfig();
-    const item = mockWorkItem();
-    const deps = makeDeps({
-      generateWithAI: mock(() =>
-        Promise.reject(new Error('Claude API error')),
+  test('links the uploaded attachment to the work item', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const link = (deps.linkAttachment as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(link[1]).toBe(42);
+    expect(link[2]).toBe('https://att/att-1');
+  });
+
+  test('posts a comment with the env URL, username, password, and mentions the attachment', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const comment = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2] as string;
+    expect(comment).toContain('https://env.example.com');
+    expect(comment).toContain('admin');
+    expect(comment).toContain('p@ssw0rd');
+    expect(comment.toLowerCase()).toContain('attach');
+  });
+
+  test('returns processed: true and propagates the USD cost', async () => {
+    const result = await processItem(mockConfig(), mockWorkItem(), makeDeps());
+    expect(result.processed).toBe(true);
+    expect(result.itemId).toBe(42);
+    expect(result.costUsd).toBe(0.5);
+  });
+});
+
+describe('processItem — failure', () => {
+  const failDeps = () =>
+    makeDeps({
+      runOrchestrator: mock(
+        async (): Promise<ScriptResult> => ({
+          status: 'failed',
+          errorMessage: 'environment would not start',
+        }),
       ),
     });
 
-    const result = await processItem(config, item, deps);
+  test('posts a comment with the error message', async () => {
+    const deps = failDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
 
-    expect(result.itemId).toBe(42);
+    const comment = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2] as string;
+    expect(comment).toContain('environment would not start');
+  });
+
+  test('does not upload or link an attachment', async () => {
+    const deps = failDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    expect(deps.uploadAttachment).not.toHaveBeenCalled();
+    expect(deps.linkAttachment).not.toHaveBeenCalled();
+  });
+
+  test('returns processed: false with the error', async () => {
+    const result = await processItem(mockConfig(), mockWorkItem(), failDeps());
     expect(result.processed).toBe(false);
-    expect(result.error).toContain('Claude API error');
-    expect(deps.updateWorkItemField).toHaveBeenCalledTimes(0);
+    expect(result.error).toContain('environment would not start');
   });
+});
 
-  test('returns error result when update fails', async () => {
-    const config = mockConfig();
-    const item = mockWorkItem();
-    const deps = makeDeps({
-      updateWorkItemField: mock(() =>
-        Promise.reject(new Error('API write error')),
-      ),
-    });
-
-    const result = await processItem(config, item, deps);
-
-    expect(result.itemId).toBe(42);
-    expect(result.processed).toBe(false);
-    expect(result.error).toContain('API write error');
-  });
-
-  test('dry run generates but does not update', async () => {
-    const config = { ...mockConfig(), dryRun: true };
-    const item = mockWorkItem();
+describe('processItem — dry run', () => {
+  test('performs no ADO writes', async () => {
     const deps = makeDeps();
+    const result = await processItem(mockConfig({ dryRun: true }), mockWorkItem(), deps);
 
-    const result = await processItem(config, item, deps);
-
-    expect(result).toEqual({ itemId: 42, processed: true });
-    expect(deps.generateWithAI).toHaveBeenCalledTimes(1);
-    expect(deps.updateWorkItemField).toHaveBeenCalledTimes(0);
+    expect(deps.uploadAttachment).not.toHaveBeenCalled();
+    expect(deps.linkAttachment).not.toHaveBeenCalled();
+    expect(deps.addComment).not.toHaveBeenCalled();
+    expect(result.processed).toBe(true);
+    expect(result.costUsd).toBe(0.5);
   });
 
-  test('handles missing description gracefully', async () => {
-    const config = mockConfig();
-    const item = mockWorkItem({
-      fields: {
-        'System.Title': 'No description item',
-        'System.WorkItemType': 'Task',
-      },
-    });
+  test('prints the generated script and env details to the terminal', async () => {
     const deps = makeDeps();
+    await processItem(mockConfig({ dryRun: true }), mockWorkItem(), deps);
 
-    const result = await processItem(config, item, deps);
-
-    expect(result).toEqual({ itemId: 42, processed: true });
-    const genCall = (deps.generateWithAI as ReturnType<typeof mock>).mock.calls[0]!;
-    expect(genCall[1].itemDescription).toBe('');
+    const reported = (deps.report as ReturnType<typeof mock>).mock.calls
+      .map((c) => c[0] as string)
+      .join('\n');
+    expect(reported).toContain('# Recording Script');
+    expect(reported).toContain('https://env.example.com');
+    expect(reported).toContain('admin');
   });
 });
