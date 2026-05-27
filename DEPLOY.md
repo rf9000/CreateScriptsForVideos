@@ -130,7 +130,11 @@ same way here.
 ## Operational notes
 
 - **Cost/cleanup:** each processed item provisions a BC environment and leaves it running
-  (`create-script.md` step 6). Track environments and prune old ones.
+  (`create-script.md` step 6) — track environments and prune old ones (still manual). On-disk
+  output is pruned automatically: the watcher deletes `output/<id>/` folders older than
+  `OUTPUT_RETENTION_DAYS` (default 14; set `0` to disable) at the end of each poll cycle. The
+  script content survives as the ADO work-item comment and the PTE is rebuildable, so this loses
+  nothing irreplaceable.
 - **Tag is the queue (no state file):** discovery is driven entirely by the work-item tag, which
   is removed after every attempt (success or failure). There is no processed-item state — failures
   do NOT auto-retry; re-add the tag to request a run again.
