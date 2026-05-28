@@ -25,6 +25,12 @@ literally; always reference the env var. This removes any dependency on VS Code 
 - The PTE gains internal access by **depending on the "Continia Banking Internal Access" app**
   (id `6e549e35-d1b2-4878-a37a-a736c22f35bf`). Do NOT add `internalsVisibleTo` to or otherwise modify
   base-application.
+- **Activate the env before deploying.** A fresh DemoPortal env is unactivated; Continia products
+  will not run until the **Continia Core Internal Activation App**
+  (`appId c3755ece-dab0-4d16-987d-040661f18522`) is installed on it. Install it via
+  `continia --token "$CONTINIA_API_TOKEN" deps install-by-id <envId> c3755ece-dab0-4d16-987d-040661f18522 --json`
+  after env provisioning and before any PTE deploy. The command is idempotent — `alreadyPresent: true`
+  in JSON output means it's already there, which is fine.
 - **The pipeline provides ALL demo data and setup — never ask the user for prerequisites.** Everything
   the demo needs must be created by the PTE or published to the environment by this pipeline. The only
   actions the recording script asks of the presenter are the on-camera steps that demonstrate the
@@ -51,13 +57,22 @@ literally; always reference the env var. This removes any dependency on VS Code 
    return a `failed` result with the blockers as the `errorMessage`. Carry remaining
    warnings/suggestions into the result's `gaps`.
 4. **Provision the environment.** Use `continia-env-setup` to create and start a fresh environment.
-5. **Deploy.** Use `continia-deps` to download symbols and `continia-deploy` to compile and publish
+5. **Activate the environment.** Run
+   `continia --token "$CONTINIA_API_TOKEN" deps install-by-id <envId> c3755ece-dab0-4d16-987d-040661f18522 --json`.
+   Parse the JSON:
+   - `{"installed": true, "alreadyPresent": false, ...}` — success, continue.
+   - `{"installed": true, "alreadyPresent": true, ...}` — already activated, continue.
+   - `{"installed": false, "reasonCode": "not-found", ...}` — stop and return a `failed` result; the
+     activation app isn't in the catalogue for this env's BC version/target, which is an
+     environmental issue this pipeline can't recover from.
+   - `{"installed": false, "reasonCode": "install-failed", ...}` — stop and return a `failed` result.
+6. **Deploy.** Use `continia-deps` to download symbols and `continia-deploy` to compile and publish
    the PTE (with its dependencies) onto the environment. Fix compile errors and retry as needed. If
    the demo relies on baseline demo-company data, also publish the `banking-demo` app to the
    environment here (publish-from-source) so that data exists — never leave it as a user prerequisite.
-6. **Verify** the environment is running and the PTE is installed (`continia-test` / `continia env`
+7. **Verify** the environment is running and the PTE is installed (`continia-test` / `continia env`
    commands as appropriate).
-7. **Collect environment details** — id, name, URL, username, password (`continia env users`).
+8. **Collect environment details** — id, name, URL, username, password (`continia env users`).
 
 ## Output
 
