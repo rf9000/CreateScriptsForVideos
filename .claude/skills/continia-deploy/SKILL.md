@@ -39,6 +39,7 @@ continia deploy <envId> <appPath> --sync-mode ForceSync --json
 ```bash
 continia deploy <envId> <appPath> --ruleset "Banking Rulesets/.cli-ruleset.json" --json
 ```
+`--ruleset` applies only to the explicit `<appPath>` target by default. Pass `--ruleset-scope all` to apply it to every app in a `--with-deps` or `--all` run.
 
 **Per-app NDJSON progress** (one line per app, useful for CI / long deploys):
 ```bash
@@ -59,11 +60,13 @@ Unpublishes any workspace app already installed on the env (in reverse dependenc
 
 ## Rulesets
 
-`continia compile` and `continia deploy` auto-load the ruleset in this order: `<app>/.vscode/settings.json` `al.ruleSetPath`, then `<workspaceRoot>/.vscode/settings.json`, then `<app>/ruleset.json` if present. Explicit `--ruleset <path>` overrides all three.
+`continia compile` and `continia deploy` auto-load the ruleset in this order: `<app>/.vscode/settings.json` `al.ruleSetPath`, then `<workspaceRoot>/.vscode/settings.json`, then `<app>/ruleset.json` if present. Explicit `--ruleset <path>` overrides all three and is scoped to the target app only — dep apps keep their own auto-discovery. Pass `--ruleset-scope all` to apply the same ruleset to every app in the run.
 
 ```bash
 continia deploy <envId> <appPath> --ruleset "Banking Rulesets/.cli-ruleset.json" --json
 ```
+
+Relative `--ruleset` (and `--package-cache`) paths resolve against `--workspace-root` (default: current directory) and support `${workspaceFolder}`. An explicit `--ruleset` whose file does not exist is a hard error.
 
 **External HTTPS includes are rejected by `alc.exe`.** VS Code happily loads remote rulesets via `includedRuleSets`; CLI `alc.exe` errors with:
 
@@ -85,7 +88,7 @@ JSON output is an array per app:
 On failure, the `error` field contains details:
 - **Missing symbols** -- invoke `continia-deps` to download dependencies, then retry
 - **AL syntax errors** -- fix the code and re-deploy
-- **"App is already installed"** -- add `--force` or increment the version
+- **"App is already installed" (same-version re-deploy):** BC silently no-ops a same-version POST. The CLI automatically unpublishes the installed entry first so the new binary actually replaces the old one. Opt out with `--no-replace-same-version`.
 - **Schema sync errors** -- retry with `--sync-mode ForceSync` (or `Recreate` as last resort, which drops and recreates tables)
 - **Connection refused** -- environment may have stopped; re-run `continia-env-setup`
 

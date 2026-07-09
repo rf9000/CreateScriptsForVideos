@@ -16,7 +16,11 @@ COPY . .
 
 # Non-root user — Claude Code refuses --dangerously-skip-permissions (used by the
 # Agent SDK) when running as root, so the watcher must run as an unprivileged user.
-RUN useradd -m -s /bin/bash claude && \
+# Align claude to UID/GID 1000 so it matches the host user that owns the bind-mounted
+# ~/.claude — otherwise the host (1000) and container clash over that shared dir (EACCES).
+# The base oven/bun image already holds 1000 for its `bun` user, so renumber it out first.
+RUN usermod -u 1100 bun && groupmod -g 1100 bun && \
+    useradd -m -s /bin/bash -u 1000 -U claude && \
     chown -R claude:claude /app && \
     mkdir -p /repos /opt/continia && \
     mkdir -p /tmp && chmod 1777 /tmp
