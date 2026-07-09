@@ -8,7 +8,7 @@ services:
     build:
       context: ./CreateScriptsForVideos
       dockerfile: Dockerfile
-    env_file: .env.create-scripts          # secrets: AZURE_DEVOPS_PAT, CONTINIA_API_TOKEN
+    env_file: .env.create-scripts          # secrets: AZURE_DEVOPS_PAT, CONTINIA_API_TOKEN, ANTHROPIC_API_KEY
     environment:
       # Container-side paths (layout, not secrets — keep them here, not in the env file)
       CONTINIA_BANKING_PATH: /repos/continia-banking
@@ -17,8 +17,8 @@ services:
       CONTINIA_ALC_PATH: /opt/al/bin/linux/alc
       LSP_PLUGIN_PATH: /opt/al-lsp-plugin
     volumes:
-      # Claude Code OAuth credentials, shared with the host (re-auth on the host as needed)
-      - /home/azureuser/.claude:/home/claude/.claude
+      # Claude auth comes from ANTHROPIC_API_KEY in .env.create-scripts (API billing);
+      # no host ~/.claude OAuth mount needed.
       # continia-banking: READ-ONLY navigation/LSP/symbol source
       - /home/azureuser/repos/continia-banking:/repos/continia-banking:ro
       # continia CLI (linux build), provisioned on the host (chmod +x there)

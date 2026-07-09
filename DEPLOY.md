@@ -17,7 +17,8 @@ This mirrors the investigate tool's deployment. The differences, all because thi
 
 ## Prerequisites
 
-- SSH access to the VM; Claude Code team subscription (OAuth)
+- SSH access to the VM; an Anthropic API key (the container runs on API billing via
+  `ANTHROPIC_API_KEY` — no Claude Code OAuth needed)
 - The `continia-linux` binary
 - A Linux `alc` (AL compiler) — extracted from the AL extension `.vsix` (below)
 - The AL language-server plugin, linux variant (below)
@@ -31,7 +32,7 @@ This mirrors the investigate tool's deployment. The differences, all because thi
 ~/tools/claude-code-lsps/al-language-server-go-linux/   # AL language-server plugin (linux)
 ~/teams/continia-banking/
   docker-compose.yml                              # shared; add the create-scripts-for-videos service
-  .env.create-scripts                             # secrets (PAT, CONTINIA_API_TOKEN)
+  .env.create-scripts                             # secrets (PAT, CONTINIA_API_TOKEN, ANTHROPIC_API_KEY)
   output/                                         # generated PTEs + scripts, per work item (browsable)
   CreateScriptsForVideos/                         # this repo (cloned)
 ```
@@ -53,15 +54,15 @@ This mirrors the investigate tool's deployment. The differences, all because thi
    ```
 4. Provision the AL compiler (see [AL compiler](#al-compiler)) and the LSP plugin
    (see [AL language-server plugin](#al-language-server-plugin)).
-5. Claude Code OAuth is shared from the host `~/.claude` (already set up for investigate).
-   If you see auth errors, re-authenticate on the host (same procedure as the investigate README).
-6. `cp CreateScriptsForVideos/.env.create-scripts.example .env.create-scripts` and fill in
-   `AZURE_DEVOPS_PAT` + `CONTINIA_API_TOKEN`. This file lives at the team root next to
-   `docker-compose.yml` (where `env_file:` resolves it), NOT inside the repo.
-7. Merge the `create-scripts-for-videos` service from this repo's `docker-compose.yml` into the
+5. `cp CreateScriptsForVideos/.env.create-scripts.example .env.create-scripts` and fill in
+   `AZURE_DEVOPS_PAT`, `CONTINIA_API_TOKEN`, and `ANTHROPIC_API_KEY`. This file lives at the
+   team root next to `docker-compose.yml` (where `env_file:` resolves it), NOT inside the repo.
+   The agent authenticates with the API key (API billing) — unlike the investigate tool, no
+   host `~/.claude` OAuth mount is used, so there is nothing to re-authenticate.
+6. Merge the `create-scripts-for-videos` service from this repo's `docker-compose.yml` into the
    shared team `docker-compose.yml`, and add the two named volumes. Confirm the host volume
    paths match your layout.
-8. Validate, build, and start:
+7. Validate, build, and start:
    ```bash
    docker compose config                                  # validates the merged YAML
    docker compose build create-scripts-for-videos
@@ -120,10 +121,11 @@ docker compose up -d create-scripts-for-videos
 To update the continia binary / alc / LSP plugin, replace the files under `~/tools/` and
 `docker compose restart create-scripts-for-videos` (no rebuild — they're mounted).
 
-## After a VM restart / re-auth / troubleshooting
+## After a VM restart / troubleshooting
 
 Identical to the investigate tool — see its README sections
-"Starting After VM Restart", "Re-authenticating Claude Code", and "Troubleshooting".
+"Starting After VM Restart" and "Troubleshooting". (The "Re-authenticating Claude Code"
+section does not apply here: this tool authenticates via `ANTHROPIC_API_KEY`, not OAuth.)
 The non-root `claude` user, root-then-drop entrypoint, and `chown -R` on volumes work the
 same way here.
 
