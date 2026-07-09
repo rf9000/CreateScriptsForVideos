@@ -21,7 +21,7 @@ RUN useradd -m -s /bin/bash claude && \
     mkdir -p /repos /opt/continia && \
     mkdir -p /tmp && chmod 1777 /tmp
 
-# Install Claude Code CLI as the non-root user (OAuth creds live under ~/.claude)
+# Install Claude Code CLI as the non-root user (auth via ANTHROPIC_API_KEY from the env)
 USER claude
 RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
@@ -45,7 +45,7 @@ ENV PATH="/opt/continia:/home/claude/.local/bin:$PATH"
 # setting CONTINIA_ALC_PATH=/opt/al/bin/linux/alc. The whole bin/ is mounted so the
 # analyzer DLLs in bin/Analyzers/ resolve relative to alc. libicu (above) is its runtime dep.
 
-# Persist generated output and Claude auth across restarts (no processed-item
+# Persist generated output and Claude CLI state across restarts (no processed-item
 # state — the work-item tag is the queue, removed after each attempt)
 VOLUME /app/output
 VOLUME /home/claude/.claude
