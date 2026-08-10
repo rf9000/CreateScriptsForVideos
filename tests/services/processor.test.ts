@@ -1,6 +1,6 @@
 import { describe, test, expect, mock } from 'bun:test';
 import type { AppConfig, WorkItemResponse, ScriptResult } from '../../src/types/index.ts';
-import { processItem } from '../../src/services/processor.ts';
+import { processItem, isBotComment, BOT_COMMENT_MARKER } from '../../src/services/processor.ts';
 import type { ProcessorDeps } from '../../src/services/processor.ts';
 
 function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -233,5 +233,63 @@ describe('processItem — dry run', () => {
     expect(reported).toContain('# Recording Script');
     expect(reported).toContain('https://env.example.com');
     expect(reported).toContain('admin');
+  });
+});
+
+describe('processItem — brief hygiene', () => {
+  test('filters bot comments and strips HTML from the rest', async () => {
+    const deps = makeDeps({
+      fetchComments: mock(async () => [
+        '<p>Use <b>DK</b> localization</p>',
+        `<p>Recording environment ready for <strong>Merge Rules</strong>.</p><p><code>${BOT_COMMENT_MARKER}</code></p>`,
+        '<p>Script generation failed for this work item:</p><blockquote>boom</blockquote>',
+      ]),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const context = call[1] as { comments: string[] };
+    expect(context.comments).toEqual(['Use DK localization']);
+  });
+
+  test('strips HTML from the description', async () => {
+    const deps = makeDeps();
+    const item = mockWorkItem({
+      fields: {
+        'System.Title': 'Demo merge rules',
+        'System.WorkItemType': 'Product Backlog Item',
+        'System.Description': '<div>Show how to create<br>a merge rule.</div>',
+      },
+    });
+    await processItem(mockConfig(), item, deps);
+
+    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const context = call[1] as { itemDescription: string };
+    expect(context.itemDescription).toBe('Show how to create\na merge rule.');
+  });
+
+  test('bot comments carry the marker so future runs filter them', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const commentCall = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(String(commentCall[2])).toContain(BOT_COMMENT_MARKER);
+  });
+
+  test('failure comments carry the marker too', async () => {
+    const deps = makeDeps({
+      runOrchestrator: mock(async () => ({ status: 'failed', errorMessage: 'boom' }) as ScriptResult),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const commentCall = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(String(commentCall[2])).toContain(BOT_COMMENT_MARKER);
+  });
+});
+
+describe('isBotComment', () => {
+  test('matches marker and legacy phrases, not user text', () => {
+    expect(isBotComment(`anything ${BOT_COMMENT_MARKER} anything`)).toBe(true);
+    expect(isBotComment('Recording environment ready for X')).toBe(true);
+    expect(isBotComment('Script generation failed for this work item: y')).toBe(true);
+    expect(isBotComment('Please use DK localization')).toBe(false);
   });
 });

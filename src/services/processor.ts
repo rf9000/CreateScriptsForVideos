@@ -10,6 +10,7 @@ import type { OrchestratorContext } from './orchestrator-agent.ts';
 
 import * as sdk from '../sdk/azure-devops-client.ts';
 import * as orchestrator from './orchestrator-agent.ts';
+import { htmlToText } from './html.ts';
 
 export interface ProcessorDeps {
   fetchComments: (config: AppConfig, workItemId: number) => Promise<string[]>;
@@ -60,6 +61,24 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Marker embedded in every comment this pipeline posts, so later runs can filter them out of the brief. */
+export const BOT_COMMENT_MARKER = '[create-scripts]';
+
+/** Phrases identifying comments posted by builds that predate the marker. */
+const LEGACY_BOT_PHRASES = [
+  'Recording environment ready for',
+  'Script generation failed for this work item',
+];
+
+export function isBotComment(text: string): boolean {
+  return (
+    text.includes(BOT_COMMENT_MARKER) ||
+    LEGACY_BOT_PHRASES.some((phrase) => text.includes(phrase))
+  );
+}
+
+const botFooter = `<p><em>Posted automatically by the create-scripts pipeline</em> <code>${BOT_COMMENT_MARKER}</code></p>`;
+
 // ADO work-item comments render HTML, not Markdown — build HTML directly.
 function buildEnvComment(result: ScriptResult, fileName: string): string {
   const env = result.env;
@@ -81,6 +100,7 @@ function buildEnvComment(result: ScriptResult, fileName: string): string {
   }
   lines.push(
     `<p>The recording script is attached to this work item as <code>${escapeHtml(fileName)}</code>.</p>`,
+    botFooter,
   );
   return lines.join('\n');
 }
@@ -90,6 +110,7 @@ function buildFailureComment(result: ScriptResult): string {
     '<p>Script generation failed for this work item:</p>',
     `<blockquote>${escapeHtml(result.errorMessage ?? 'unknown error')}</blockquote>`,
     '<p>The tag has been removed. <strong>Re-add the tag</strong> (e.g. after adding more detail) to try again.</p>',
+    botFooter,
   ].join('\n');
 }
 
@@ -102,13 +123,19 @@ export async function processItem(
   log(`Processing item #${item.id}: ${title}`);
 
   try {
-    const comments = await deps.fetchComments(config, item.id);
+    const rawComments = await deps.fetchComments(config, item.id);
+    // ADO stores comments as HTML and includes this pipeline's own past posts
+    // (env credentials, failure reports). Neither belongs in the agent's brief.
+    const comments = rawComments
+      .filter((c) => !isBotComment(c))
+      .map((c) => htmlToText(c))
+      .filter((c) => c.length > 0);
 
     const context: OrchestratorContext = {
       itemId: item.id,
       itemTitle: title,
       itemType: String(item.fields['System.WorkItemType'] ?? ''),
-      itemDescription: String(item.fields['System.Description'] ?? ''),
+      itemDescription: htmlToText(String(item.fields['System.Description'] ?? '')),
       comments,
     };
 

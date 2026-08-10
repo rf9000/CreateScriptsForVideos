@@ -54,9 +54,9 @@ export function buildOrchestratorPrompt(context: OrchestratorContext): string {
 
   if (context.comments.length > 0) {
     lines.push('', '## Comments');
-    for (const comment of context.comments) {
-      lines.push(`- ${comment}`);
-    }
+    context.comments.forEach((comment, i) => {
+      lines.push('', `### Comment ${i + 1}`, comment);
+    });
   }
 
   return lines.join('\n');
