@@ -49,6 +49,12 @@ Each output is a **complete, deployable extension** — not a loose file. It con
       "name": "Continia Banking",
       "publisher": "Continia Software",
       "version": "<match base-application/app.json version>"
+    },
+    {
+      "id": "6e549e35-d1b2-4878-a37a-a736c22f35bf",
+      "name": "Continia Banking Internal Access",
+      "publisher": "Continia Software Partner",
+      "version": "1.0.0.0"
     }
   ],
   "idRanges": [
@@ -63,6 +69,7 @@ Each output is a **complete, deployable extension** — not a loose file. It con
 **Notes:**
 - **GUID**: Must be a real GUID — `00000000-0000-0000-0000-000000000000` causes AL1053 compilation error
 - **Versions**: Read `base-application/app.json` for current `platform` and `application` values. Hardcoding a mismatched version (e.g., `28.0.0.0` when symbols are v27) causes compilation failure
+- **Internal access**: the "Continia Banking Internal Access" dependency is REQUIRED — it is how the PTE reaches `Access = Internal` CTS-* objects. If compilation reports a version mismatch on it, use the version `continia deps` downloaded. Never solve internal access any other way.
 - Add additional dependencies if the codeunit references tables from other apps (Import, Export, etc.)
 - The `idRanges` 50000-50099 is for demo extensions only — these are outside the Continia reserved ranges
 
@@ -75,7 +82,7 @@ Each output is a **complete, deployable extension** — not a loose file. It con
 }
 ```
 
-## Upgrade Codeunit Template
+## Install Codeunit Template
 
 ```al
 codeunit 50000 "Demo Data - <Feature Name>"
@@ -89,9 +96,9 @@ codeunit 50000 "Demo Data - <Feature Name>"
         // Use RIM for tables where records are created (Read + Insert + Modify).
         // Use RIMD for tables that need cleanup before recreation.
         // Use RM for tables where only existing records are modified.
-    Subtype = Upgrade;
+    Subtype = Install;
 
-    trigger OnUpgradePerCompany()
+    trigger OnInstallAppPerCompany()
     begin
         CreateDemoData();
     end;
@@ -189,19 +196,19 @@ codeunit 50000 "Demo Data - <Feature Name>"
 - **File name:** Always `InstallDemoData.Codeunit.al`
 - **Name format:** `"Continia Demo Data - <Feature Name>"` (e.g., `"Continia Demo Data - Bank Reconciliation"`) — the PTE name must always start with "Continia"
 - **`Access = Internal`** — internal to this demo extension
-- **`Subtype = Upgrade`** — use Upgrade (not Install) so data creation can be forced on every publish via `"forceUpgrade": true` in launch.json. Install triggers only run once and can't be re-triggered without version bumps.
+- **`Subtype = Install`** — the pipeline provisions a FRESH environment per work item, so the install trigger always fires on first publish. If the install fails, the app is left uninstalled and republishing re-fires the trigger. Because data creation is idempotent (`if not Get() then Insert` guards), re-installing on an environment where the data already exists is safe.
 - **`Permissions`** — declare all `tabledata` permissions explicitly:
   - `RIM` (Read + Insert + Modify) for tables where records are created
   - `RIMD` (Read + Insert + Modify + Delete) for tables that need cleanup before recreation
   - `RM` (Read + Modify) for tables where only existing records are modified
   - List every table the codeunit touches, including tables written to by management codeunits
-- **`OnUpgradePerCompany()`** — the upgrade trigger calls `CreateDemoData()` which orchestrates all sub-procedures
-- **launch.json** must include `"forceUpgrade": true` and `"schemaUpdateMode": "ForceSync"` to ensure the trigger runs on every publish
+- **`OnInstallAppPerCompany()`** — the install trigger calls `CreateDemoData()` which orchestrates all sub-procedures
+- **launch.json** stays minimal (empty `configurations`) — publishing goes through `continia-deploy`, not VS Code
 
 ### Why a Deployable Extension?
 - Can be compiled and published directly to any BC environment (DemoPortal, sandbox, CI)
 - No need to integrate into the banking-demo app — keeps demo data isolated per feature
-- Upgrade trigger with `forceUpgrade: true` creates data reliably on every publish — no version bumping needed
+- Install trigger fires on first publish to the fresh per-item environment; failed installs leave the app uninstalled so a fixed redeploy re-fires it
 - Can be uninstalled to cleanly remove demo data
 - Self-contained: all dependencies declared in app.json
 
@@ -300,11 +307,8 @@ end;
 
 **When to use this:** If a field ID is in the Continia range (71553575+), it's from a table extension. Always use RecordRef for these fields.
 
-### internalsVisibleTo Requirement
-All CTS-CB tables, enums, and codeunits are `Access = Internal`. The demo extension's app ID **must** be added to `base-application/app.json` `internalsVisibleTo` array before compiling. After generating the extension:
-1. Generate the GUID for the extension's `app.json`
-2. Add that GUID to `base-application/app.json` → `internalsVisibleTo`
-3. Then compile
+### Internal Access via Dependency (NOT internalsVisibleTo)
+All CTS-CB tables, enums, and codeunits are `Access = Internal`. The PTE gains access by depending on the **"Continia Banking Internal Access"** app (`6e549e35-d1b2-4878-a37a-a736c22f35bf`, publisher "Continia Software Partner") declared in `app.json`. Do **NOT** modify `base-application/app.json` or any other file in the read-only continia-banking repo.
 
 ### Symbol Package Prerequisites
 The `continia deps` CLI only fetches direct dependencies. For a demo extension to compile:
