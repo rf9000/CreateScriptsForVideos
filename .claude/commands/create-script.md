@@ -70,8 +70,12 @@ literally; always reference the env var. This removes any dependency on VS Code 
    the PTE (with its dependencies) onto the environment. Fix compile errors and retry as needed. If
    the demo relies on baseline demo-company data, also publish the `banking-demo` app to the
    environment here (publish-from-source) so that data exists — never leave it as a user prerequisite.
-7. **Verify** the environment is running and the PTE is installed (`continia-test` / `continia env`
-   commands as appropriate).
+7. **Verify** the environment is running and the PTE is listed as installed (`continia-test` /
+   `continia env` commands as appropriate). The PTE's install trigger ends with `VerifyDemoData()`,
+   which re-reads every seeded record and errors on the first missing one — so a successful
+   publish+install is runtime proof the demo data landed. If publish fails with a
+   "Demo data verification failed" error, treat it as a compile-error-equivalent: fix the PTE's
+   data creation and redeploy (step 6 fix loop).
 8. **Collect environment details** — id, name, URL, username, password (`continia env users`).
 
 ## Output

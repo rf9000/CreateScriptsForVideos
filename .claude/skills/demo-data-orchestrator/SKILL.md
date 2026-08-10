@@ -107,8 +107,9 @@ Read `references/al-template.md` for the exact structure. The output is a folder
    - `Access = Internal`
    - `Subtype = Install` — runs automatically on app install
    - `Permissions = tabledata "..." = RIM` — declare ALL table permissions explicitly
-   - `OnInstallAppPerCompany()` trigger calls `CreateDemoData()`
+   - `OnInstallAppPerCompany()` trigger calls `CreateDemoData()` then `VerifyDemoData()`
    - `CreateDemoData()` is a `local procedure` (only called from the trigger)
+   - `VerifyDemoData()` is a `local procedure` that re-reads EVERY seeded record (`Get()` for keyed records, `IsEmpty()` checks for ranges) and calls `Error()` naming the first missing one. A verification failure aborts the install, so a broken PTE fails at publish time instead of producing an empty demo. Every record `CreateDemoData()` inserts must have a matching verification check.
    - Object ID 50000 (in the demo extension range)
 
 4. **Name format:** `"Continia Demo Data - <Feature Name>"` — the PTE name must always start with "Continia"

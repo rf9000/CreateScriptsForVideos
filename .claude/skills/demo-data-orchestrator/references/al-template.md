@@ -101,6 +101,7 @@ codeunit 50000 "Demo Data - <Feature Name>"
     trigger OnInstallAppPerCompany()
     begin
         CreateDemoData();
+        VerifyDemoData();
     end;
 
     // -------------------------------------------------------------------------
@@ -175,6 +176,30 @@ codeunit 50000 "Demo Data - <Feature Name>"
         BankAccount.Insert();
     end;
 
+    // -------------------------------------------------------------------------
+    // Runtime Verification — one check per seeded record
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Re-reads every record CreateDemoData() seeded. A missing record aborts
+    /// the install with a clear error, which surfaces as a publish failure the
+    /// deploy step must fix. Keep this in sync with CreateDemoData().
+    /// </summary>
+    local procedure VerifyDemoData()
+    var
+        BankAccountPostingGroup: Record "Bank Account Posting Group";
+        BankAccount: Record "Bank Account";
+    begin
+        if not BankAccountPostingGroup.Get(BankAccPostGroupLbl) then
+            Error(MissingRecordErr, BankAccountPostingGroup.TableCaption(), BankAccPostGroupLbl);
+        if not BankAccount.Get(BankAccNoLbl) then
+            Error(MissingRecordErr, BankAccount.TableCaption(), BankAccNoLbl);
+        // ... one check per seeded record, in the same order as CreateDemoData()
+    end;
+
+    var
+        MissingRecordErr: Label 'Demo data verification failed: %1 "%2" was not created.', Comment = '%1 = table caption, %2 = record key';
+
     // Repeat this pattern for all entity types. See management-codeunit-catalog.md
     // for which fields to set on each table (use as field reference, not for calling).
 }
@@ -203,6 +228,7 @@ codeunit 50000 "Demo Data - <Feature Name>"
   - `RM` (Read + Modify) for tables where only existing records are modified
   - List every table the codeunit touches, including tables written to by management codeunits
 - **`OnInstallAppPerCompany()`** — the install trigger calls `CreateDemoData()` which orchestrates all sub-procedures
+- **`VerifyDemoData()`** — mandatory; one `Get()`/`IsEmpty()` check per seeded record, `Error(MissingRecordErr, ...)` on the first miss. The install trigger calls it after `CreateDemoData()`.
 - **launch.json** stays minimal (empty `configurations`) — publishing goes through `continia-deploy`, not VS Code
 
 ### Why a Deployable Extension?
