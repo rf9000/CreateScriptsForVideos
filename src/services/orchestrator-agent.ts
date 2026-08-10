@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { z } from 'zod';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import type { AppConfig, ScriptResult } from '../types/index.ts';
 
@@ -85,19 +86,64 @@ function buildRuntimeBlock(config: AppConfig, itemId: number): string {
   ].join('\n');
 }
 
+const envSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().min(1),
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+
+const commonFields = {
+  feature: z.string().optional(),
+  ptePath: z.string().optional(),
+  assumptions: z.array(z.string()).optional(),
+  gaps: z.array(z.string()).optional(),
+};
+
+// Success must carry everything the processor posts to ADO; failed must explain itself.
+const scriptResultSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('success'),
+    scriptPath: z.string().min(1),
+    env: envSchema,
+    errorMessage: z.string().optional(),
+    ...commonFields,
+  }),
+  z.object({
+    status: z.literal('failed'),
+    errorMessage: z.string().min(1),
+    scriptPath: z.string().optional(),
+    env: envSchema.optional(),
+    ...commonFields,
+  }),
+]);
+
 /**
  * Extract the structured result from the agent's final reply. Accepts a raw
  * JSON object, or a fenced ```json block embedded in prose. Falls back to a
- * failed result when nothing parseable is found.
+ * failed result when nothing parseable is found. The result is validated
+ * against `scriptResultSchema`: a schema-invalid "success" degrades to
+ * `status: 'failed'`, salvaging a valid `env` if one was provisioned.
  */
 export function parseResult(raw: string): ScriptResult {
   const candidate = extractJson(raw);
   if (candidate !== undefined) {
     try {
-      const obj = JSON.parse(candidate) as ScriptResult;
-      if (obj.status === 'success' || obj.status === 'failed') {
-        return obj;
-      }
+      const obj = JSON.parse(candidate) as Record<string, unknown>;
+      const parsed = scriptResultSchema.safeParse(obj);
+      if (parsed.success) return parsed.data;
+
+      // Salvage a provisioned environment so the failure report can surface it.
+      const env = envSchema.safeParse(obj['env']);
+      const issues = parsed.error.issues
+        .map((i) => `${i.path.join('.')}: ${i.message}`)
+        .join('; ');
+      return {
+        status: 'failed',
+        errorMessage: `Agent result failed schema validation: ${issues}`,
+        ...(env.success ? { env: env.data } : {}),
+      };
     } catch {
       // fall through to failure
     }

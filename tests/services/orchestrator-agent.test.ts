@@ -109,6 +109,53 @@ describe('parseResult', () => {
   });
 });
 
+describe('parseResult — schema validation', () => {
+  const validEnv = {
+    id: 'env-1', name: 'Demo', url: 'https://e.example.com',
+    username: 'admin', password: 'pw',
+  };
+
+  test('accepts a fully-formed success', () => {
+    const raw = '```json\n' + JSON.stringify({
+      status: 'success', feature: 'Merge Rules',
+      scriptPath: '/out/42/script.md', ptePath: '/out/42/pte',
+      env: validEnv, assumptions: [], gaps: [],
+    }) + '\n```';
+    expect(parseResult(raw).status).toBe('success');
+  });
+
+  test('rejects success without env', () => {
+    const raw = '```json\n' + JSON.stringify({
+      status: 'success', scriptPath: '/out/42/script.md',
+    }) + '\n```';
+    const result = parseResult(raw);
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toContain('schema validation');
+    expect(result.errorMessage).toContain('env');
+  });
+
+  test('rejects success without scriptPath', () => {
+    const raw = '```json\n' + JSON.stringify({ status: 'success', env: validEnv }) + '\n```';
+    const result = parseResult(raw);
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toContain('scriptPath');
+  });
+
+  test('salvages a valid env from a schema-invalid success', () => {
+    const raw = '```json\n' + JSON.stringify({ status: 'success', env: validEnv }) + '\n```';
+    const result = parseResult(raw);
+    expect(result.status).toBe('failed');
+    expect(result.env).toEqual(validEnv);
+  });
+
+  test('rejects failed without errorMessage', () => {
+    const raw = '```json\n' + JSON.stringify({ status: 'failed' }) + '\n```';
+    const result = parseResult(raw);
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toContain('schema validation');
+  });
+});
+
 describe('runOrchestrator', () => {
   function fakeQuery(messages: AgentMessage[]) {
     return () =>
@@ -122,6 +169,13 @@ describe('runOrchestrator', () => {
       status: 'success',
       feature: 'Merge Rules',
       scriptPath: '/work/output/42/script.md',
+      env: {
+        id: 'env-1',
+        name: 'Demo Env',
+        url: 'https://env.example.com',
+        username: 'admin',
+        password: 'p@ss',
+      },
     });
     const messages: AgentMessage[] = [
       { type: 'assistant' } as AgentMessage,
