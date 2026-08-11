@@ -32,6 +32,7 @@ Environment variables:
   PTE_OUTPUT_DIR            Writable dir for the generated PTE (default: WORKSPACE_OUTPUT_DIR)
   LSP_PLUGIN_PATH           Local path to the LSP plugin loaded into the agent
   POLL_INTERVAL_MINUTES     Polling interval (default: 5)
+  WATCH_CONCURRENCY         Max items processed in parallel per cycle (default: 1)
   AGENT_MAX_TURNS           Max agentic turns per item (default: 200)
   CLAUDE_MODEL              Claude model to use (default: claude-sonnet-4-6)
   PROMPT_PATH               Orchestration prompt (default: .claude/commands/create-script.md)

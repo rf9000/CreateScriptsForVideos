@@ -49,17 +49,22 @@ export async function runPollCycle(
   const items = await deps.fetchItems(config);
   log(`  Found ${items.length} tagged item(s)`);
 
-  for (const item of items) {
-    try {
-      const result = await deps.processItem(config, item);
-      totalCostUsd += result.costUsd ?? 0;
-      if (result.processed) totalProcessed++;
-      else totalErrors++;
-    } catch (err) {
-      log(`  Item #${item.id}: Fatal error — ${err}`);
-      totalErrors++;
+  const queue = [...items];
+  const worker = async (): Promise<void> => {
+    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+      try {
+        const result = await deps.processItem(config, item);
+        totalCostUsd += result.costUsd ?? 0;
+        if (result.processed) totalProcessed++;
+        else totalErrors++;
+      } catch (err) {
+        log(`  Item #${item.id}: Fatal error — ${err}`);
+        totalErrors++;
+      }
     }
-  }
+  };
+  const workerCount = Math.min(Math.max(1, config.watchConcurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   if (config.outputRetentionDays > 0) {
     const prunedCount = deps.pruneOutputs(config);

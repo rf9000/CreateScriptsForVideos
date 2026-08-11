@@ -29,6 +29,8 @@ export interface AppConfig {
   agentMaxTurns: number;
   /** Days to keep generated output/<id>/ folders before the watcher prunes them. 0 = never prune. */
   outputRetentionDays: number;
+  /** Max work items processed in parallel per poll cycle. 1 = sequential (default). */
+  watchConcurrency: number;
 }
 
 /** A relation (link) on a work item, e.g. an ArtifactLink to a Git branch/commit. */

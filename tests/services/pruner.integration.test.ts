@@ -23,6 +23,7 @@ function config(dir: string, retentionDays: number): AppConfig {
     continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
     workspaceOutputDir: dir, pteOutputDir: dir, lspPluginPath: '',
     agentMaxTurns: 120, outputRetentionDays: retentionDays,
+    watchConcurrency: 1,
   };
 }
 

@@ -24,6 +24,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     lspPluginPath: '',
     agentMaxTurns: 120,
     outputRetentionDays: 14,
+    watchConcurrency: 1,
     ...overrides,
   };
 }
@@ -135,5 +136,45 @@ describe('runPollCycle', () => {
     const result = await runPollCycle(mockConfig(), deps);
 
     expect(result.costUsd).toBeCloseTo(0.5, 5);
+  });
+
+  test('processes items concurrently up to watchConcurrency', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const items = [1, 2, 3, 4].map((id) => mockWorkItem({ id }));
+    const deps: WatcherDeps = {
+      fetchItems: async () => items,
+      processItem: async (_c, item) => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((r) => setTimeout(r, 10));
+        active--;
+        return { itemId: item.id, processed: true, costUsd: 1 };
+      },
+      pruneOutputs: () => 0,
+    };
+    const result = await runPollCycle(mockConfig({ watchConcurrency: 2 }), deps);
+    expect(result.processed).toBe(4);
+    expect(result.costUsd).toBe(4);
+    expect(maxActive).toBe(2);
+  });
+
+  test('stays sequential at the default concurrency of 1', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const items = [1, 2].map((id) => mockWorkItem({ id }));
+    const deps: WatcherDeps = {
+      fetchItems: async () => items,
+      processItem: async (_c, item) => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((r) => setTimeout(r, 5));
+        active--;
+        return { itemId: item.id, processed: true };
+      },
+      pruneOutputs: () => 0,
+    };
+    await runPollCycle(mockConfig({ watchConcurrency: 1 }), deps);
+    expect(maxActive).toBe(1);
   });
 });

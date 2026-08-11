@@ -15,6 +15,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
     workspaceOutputDir: '/out', pteOutputDir: '/out', lspPluginPath: '',
     agentMaxTurns: 120, outputRetentionDays: 14,
+    watchConcurrency: 1,
     ...overrides,
   };
 }

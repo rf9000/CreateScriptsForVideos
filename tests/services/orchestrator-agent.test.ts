@@ -31,6 +31,7 @@ function mockConfig(): AppConfig {
     lspPluginPath: '/plugins/lsp',
     agentMaxTurns: 120,
     outputRetentionDays: 14,
+    watchConcurrency: 1,
   };
 }
 

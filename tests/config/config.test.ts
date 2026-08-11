@@ -156,5 +156,10 @@ describe("loadConfig", () => {
         loadConfig({ ...validEnv, CONTINIA_API_TOKEN: "tok-123" }).continiaApiToken,
       ).toBe("tok-123");
     });
+
+    it("defaults WATCH_CONCURRENCY to 1 and coerces values", () => {
+      expect(loadConfig(validEnv).watchConcurrency).toBe(1);
+      expect(loadConfig({ ...validEnv, WATCH_CONCURRENCY: "3" }).watchConcurrency).toBe(3);
+    });
   });
 });
