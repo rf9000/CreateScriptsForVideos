@@ -5,7 +5,7 @@ import {
   adoFetch,
   adoFetchWithRetry,
   queryWorkItems,
-  queryWorkItemsByTag,
+  queryTaggedWorkItems,
   getWorkItem,
   getWorkItemsBatch,
   updateWorkItemField,
@@ -358,25 +358,64 @@ describe('updateWorkItemField', () => {
   });
 });
 
-describe('queryWorkItemsByTag', () => {
-  test('narrows via WIQL (no TeamProject clause) then exact-matches the tag', async () => {
+describe('queryTaggedWorkItems', () => {
+  test('returns full items for exact tag matches using exactly two requests', async () => {
     setSequentialMockFetch(
-      { body: { workItems: [{ id: 7 }, { id: 8 }] } }, // WIQL candidates
+      { body: { workItems: [{ id: 1, url: 'u1' }, { id: 2, url: 'u2' }] } },
       {
         body: {
           value: [
-            { id: 7, fields: { 'System.Tags': 'create script; other' } },
-            { id: 8, fields: { 'System.Tags': 'create scripts' } }, // substring-only
+            {
+              id: 1, rev: 3, url: 'u1',
+              fields: {
+                'System.Tags': 'create script; other',
+                'System.Title': 'Item one',
+                'System.Description': '<p>desc</p>',
+                'System.WorkItemType': 'Product Backlog Item',
+              },
+            },
+            {
+              id: 2, rev: 1, url: 'u2',
+              fields: { 'System.Tags': 'create scripts', 'System.Title': 'Item two' },
+            },
+          ],
+        },
+      },
+    );
+    const items = await queryTaggedWorkItems(mockConfig());
+    expect(items.map((i) => i.id)).toEqual([1]);
+    expect(items[0]!.fields['System.Title']).toBe('Item one');
+    expect(mockFn.mock.calls.length).toBe(2);
+    const batchUrl = String(mockFn.mock.calls[1]![0]);
+    expect(batchUrl).toContain('System.Title');
+    expect(batchUrl).not.toContain('$expand');
+  });
+
+  test('returns empty without a batch call when WIQL finds nothing', async () => {
+    setMockFetch({ workItems: [] });
+    const items = await queryTaggedWorkItems(mockConfig());
+    expect(items).toEqual([]);
+    expect(mockFn.mock.calls.length).toBe(1);
+  });
+
+  test('narrows via WIQL (no TeamProject clause) using a CONTAINS clause', async () => {
+    setSequentialMockFetch(
+      { body: { workItems: [{ id: 7, url: 'u7' }, { id: 8, url: 'u8' }] } },
+      {
+        body: {
+          value: [
+            { id: 7, rev: 1, url: 'u7', fields: { 'System.Tags': 'create script; other' } },
+            { id: 8, rev: 1, url: 'u8', fields: { 'System.Tags': 'create scripts' } }, // substring-only
           ],
         },
       },
     );
     const config = mockConfig();
 
-    const result = await queryWorkItemsByTag(config);
+    const result = await queryTaggedWorkItems(config);
 
     // #8 is dropped: CONTAINS matched the substring, but exact match rejects it.
-    expect(result).toEqual([7]);
+    expect(result.map((i) => i.id)).toEqual([7]);
     const wiqlInit = mockFn.mock.calls[0]![1] as RequestInit;
     const body = JSON.parse(wiqlInit.body as string) as { query: string };
     expect(body.query).not.toContain('System.TeamProject');
@@ -385,12 +424,12 @@ describe('queryWorkItemsByTag', () => {
 
   test('adds an AreaPath UNDER clause when areaPath is set', async () => {
     setSequentialMockFetch(
-      { body: { workItems: [{ id: 7 }] } },
-      { body: { value: [{ id: 7, fields: { 'System.Tags': 'create script' } }] } },
+      { body: { workItems: [{ id: 7, url: 'u7' }] } },
+      { body: { value: [{ id: 7, rev: 1, url: 'u7', fields: { 'System.Tags': 'create script' } }] } },
     );
     const config = { ...mockConfig(), areaPath: 'Continia Software\\Continia Banking' };
 
-    await queryWorkItemsByTag(config);
+    await queryTaggedWorkItems(config);
 
     const body = JSON.parse(
       (mockFn.mock.calls[0]![1] as RequestInit).body as string,
@@ -402,11 +441,11 @@ describe('queryWorkItemsByTag', () => {
 
   test('omits the AreaPath clause when areaPath is empty', async () => {
     setSequentialMockFetch(
-      { body: { workItems: [{ id: 7 }] } },
-      { body: { value: [{ id: 7, fields: { 'System.Tags': 'create script' } }] } },
+      { body: { workItems: [{ id: 7, url: 'u7' }] } },
+      { body: { value: [{ id: 7, rev: 1, url: 'u7', fields: { 'System.Tags': 'create script' } }] } },
     );
 
-    await queryWorkItemsByTag(mockConfig());
+    await queryTaggedWorkItems(mockConfig());
 
     const body = JSON.parse(
       (mockFn.mock.calls[0]![1] as RequestInit).body as string,
@@ -414,14 +453,36 @@ describe('queryWorkItemsByTag', () => {
     expect(body.query).not.toContain('System.AreaPath');
   });
 
-  test('returns empty (and skips the tag fetch) when there are no candidates', async () => {
-    setMockFetch({ workItems: [] });
-    const config = mockConfig();
+  test('chunks batch fetches at 200 ids', async () => {
+    const candidateIds = Array.from({ length: 250 }, (_, i) => i + 1);
+    const firstChunk = candidateIds.slice(0, 200);
+    const secondChunk = candidateIds.slice(200);
+    setSequentialMockFetch(
+      { body: { workItems: candidateIds.map((id) => ({ id, url: `u${id}` })) } },
+      {
+        body: {
+          value: firstChunk.map((id) => ({
+            id, rev: 1, url: `u${id}`, fields: { 'System.Tags': 'create script' },
+          })),
+        },
+      },
+      {
+        body: {
+          value: secondChunk.map((id) => ({
+            id, rev: 1, url: `u${id}`, fields: { 'System.Tags': 'create script' },
+          })),
+        },
+      },
+    );
 
-    const result = await queryWorkItemsByTag(config);
+    const result = await queryTaggedWorkItems(mockConfig());
 
-    expect(result).toEqual([]);
-    expect(mockFn.mock.calls.length).toBe(1);
+    expect(result.length).toBe(250);
+    expect(mockFn.mock.calls.length).toBe(3); // WIQL + 2 batch chunks
+    const firstBatchUrl = String(mockFn.mock.calls[1]![0]);
+    const secondBatchUrl = String(mockFn.mock.calls[2]![0]);
+    expect(firstBatchUrl).toContain(`ids=${firstChunk.join(',')}`);
+    expect(secondBatchUrl).toContain(`ids=${secondChunk.join(',')}`);
   });
 });
 

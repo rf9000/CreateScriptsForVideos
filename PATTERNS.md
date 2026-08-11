@@ -22,7 +22,7 @@ Services define a `Deps` interface listing their external dependencies as functi
 
 ## Tag-driven queue (no persisted state)
 
-Discovery is driven entirely by the work-item tag (`queryWorkItemsByTag`), and the processor removes the tag after every attempt (success or failure). The tag's presence IS the queue, so there's no processed-item state to persist; re-tagging an item requests it again.
+Discovery is driven entirely by the work-item tag (`queryTaggedWorkItems`), and the processor removes the tag after every attempt (success or failure). The tag's presence IS the queue, so there's no processed-item state to persist; re-tagging an item requests it again.
 
 ## Polling with Graceful Shutdown
 

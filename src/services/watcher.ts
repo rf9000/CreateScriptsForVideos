@@ -18,9 +18,7 @@ export interface WatcherDeps {
 }
 
 async function defaultFetchItems(config: AppConfig): Promise<WorkItemResponse[]> {
-  const ids = await sdk.queryWorkItemsByTag(config);
-  if (ids.length === 0) return [];
-  return sdk.getWorkItemsBatch(config, ids);
+  return sdk.queryTaggedWorkItems(config);
 }
 
 const defaultDeps: WatcherDeps = {

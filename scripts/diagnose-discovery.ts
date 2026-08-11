@@ -12,7 +12,7 @@
 import { loadConfig } from '../src/config/index.ts';
 import {
   queryWorkItems,
-  queryWorkItemsByTag,
+  queryTaggedWorkItems,
   getWorkItemsBatch,
 } from '../src/sdk/azure-devops-client.ts';
 
@@ -35,7 +35,7 @@ if (tagOnlyIds.length) console.log(`  ids: ${tagOnlyIds.join(', ')}`);
 console.log();
 
 // Stage 2 — the watcher's real query: exact tag match + area UNDER.
-const discoveredIds = await queryWorkItemsByTag(config);
+const discoveredIds = (await queryTaggedWorkItems(config)).map((i) => i.id);
 console.log(`Stage 2 — watcher query (exact tag${config.areaPath ? ' + area UNDER' : ''}): ${discoveredIds.length}`);
 if (discoveredIds.length) console.log(`  ids: ${discoveredIds.join(', ')}`);
 console.log();
