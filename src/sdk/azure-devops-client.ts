@@ -7,10 +7,13 @@ import type {
 export class AzureDevOpsError extends Error {
   override readonly name = 'AzureDevOpsError';
   readonly statusCode: number;
+  /** Milliseconds from a Retry-After header, when the API sent one (429). */
+  readonly retryAfterMs?: number;
 
-  constructor(message: string, statusCode: number) {
+  constructor(message: string, statusCode: number, retryAfterMs?: number) {
     super(message);
     this.statusCode = statusCode;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -36,22 +39,31 @@ export async function adoFetch<T>(
 
   if (!res.ok) {
     const body = await res.text();
+    const retryAfterSec = Number(res.headers.get('Retry-After'));
     throw new AzureDevOpsError(
       `Azure DevOps API error ${res.status}: ${body}`,
       res.status,
+      Number.isFinite(retryAfterSec) && retryAfterSec > 0 ? retryAfterSec * 1000 : undefined,
     );
   }
 
   return (await res.json()) as T;
 }
 
-const DEFAULT_RETRY_DELAYS = [1000, 2000, 4000];
+export const DEFAULT_RETRY_DELAYS = [1000, 2000, 4000];
 
+/**
+ * Fetch with retry. 429 (throttling) is always retryable — ADO rejected the
+ * request without processing it — honoring Retry-After when present. 5xx and
+ * network errors are retried only for idempotent requests; retrying a POST
+ * that may have been applied server-side duplicates comments/attachments.
+ */
 export async function adoFetchWithRetry<T>(
   config: AppConfig,
   path: string,
   options?: RequestInit,
   retryDelays: number[] = DEFAULT_RETRY_DELAYS,
+  idempotent = true,
 ): Promise<T> {
   const maxAttempts = retryDelays.length + 1;
 
@@ -60,21 +72,19 @@ export async function adoFetchWithRetry<T>(
       return await adoFetch<T>(config, path, options);
     } catch (err: unknown) {
       const isLastAttempt = attempt === maxAttempts;
+      let delay = retryDelays[attempt - 1] ?? 0;
 
       if (err instanceof AzureDevOpsError) {
-        if (err.statusCode < 500) {
-          throw err;
-        }
-        if (isLastAttempt) {
-          throw err;
+        const retryable =
+          err.statusCode === 429 || (idempotent && err.statusCode >= 500);
+        if (!retryable || isLastAttempt) throw err;
+        if (err.statusCode === 429 && err.retryAfterMs !== undefined) {
+          delay = err.retryAfterMs;
         }
       } else {
-        if (isLastAttempt) {
-          throw err;
-        }
+        if (!idempotent || isLastAttempt) throw err;
       }
 
-      const delay = retryDelays[attempt - 1] ?? 0;
       await new Promise((r) => setTimeout(r, delay));
     }
   }
@@ -225,7 +235,7 @@ export async function addWorkItemComment(
   await adoFetchWithRetry(config, path, {
     method: 'POST',
     body: JSON.stringify({ text }),
-  });
+  }, DEFAULT_RETRY_DELAYS, false);
 }
 
 export interface AttachmentRef {
@@ -244,7 +254,7 @@ export async function uploadAttachment(
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: content,
-  });
+  }, DEFAULT_RETRY_DELAYS, false);
 }
 
 /** Link a previously uploaded attachment to a work item with a relation comment. */
@@ -269,5 +279,5 @@ export async function linkAttachment(
         },
       },
     ]),
-  });
+  }, DEFAULT_RETRY_DELAYS, false);
 }

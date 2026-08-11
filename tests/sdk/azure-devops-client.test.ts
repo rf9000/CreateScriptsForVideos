@@ -177,6 +177,68 @@ describe('adoFetchWithRetry', () => {
   });
 });
 
+describe('retry policy', () => {
+  test('adoFetch exposes Retry-After as retryAfterMs', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        new Response('slow down', {
+          status: 429,
+          headers: { 'Retry-After': '7' },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+    try {
+      await adoFetch(mockConfig(), 'wit/anything?api-version=7.0');
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AzureDevOpsError);
+      expect((err as AzureDevOpsError).statusCode).toBe(429);
+      expect((err as AzureDevOpsError).retryAfterMs).toBe(7000);
+    }
+  });
+
+  test('adoFetchWithRetry retries 429 and succeeds', async () => {
+    setSequentialMockFetch(
+      { body: 'throttled', status: 429 },
+      { body: { ok: true } },
+    );
+    const result = await adoFetchWithRetry<{ ok: boolean }>(
+      mockConfig(), 'wit/x?api-version=7.0', undefined, [1],
+    );
+    expect(result.ok).toBe(true);
+    expect(mockFn.mock.calls.length).toBe(2);
+  });
+
+  test('non-idempotent calls do NOT retry 5xx', async () => {
+    setSequentialMockFetch({ body: 'boom', status: 503 }, { body: { ok: true } });
+    await expect(
+      adoFetchWithRetry(mockConfig(), 'wit/x?api-version=7.0', { method: 'POST' }, [1], false),
+    ).rejects.toThrow('503');
+    expect(mockFn.mock.calls.length).toBe(1);
+  });
+
+  test('non-idempotent calls still retry 429', async () => {
+    setSequentialMockFetch({ body: 'throttled', status: 429 }, { body: { ok: true } });
+    const result = await adoFetchWithRetry<{ ok: boolean }>(
+      mockConfig(), 'wit/x?api-version=7.0', { method: 'POST' }, [1], false,
+    );
+    expect(result.ok).toBe(true);
+    expect(mockFn.mock.calls.length).toBe(2);
+  });
+
+  test('non-idempotent calls do not retry network errors', async () => {
+    let calls = 0;
+    globalThis.fetch = mock(() => {
+      calls++;
+      return Promise.reject(new Error('socket hang up'));
+    }) as unknown as typeof fetch;
+    await expect(
+      adoFetchWithRetry(mockConfig(), 'wit/x?api-version=7.0', { method: 'POST' }, [1], false),
+    ).rejects.toThrow('socket hang up');
+    expect(calls).toBe(1);
+  });
+});
+
 describe('queryWorkItems', () => {
   test('posts WIQL query and returns work item IDs', async () => {
     setMockFetch({
