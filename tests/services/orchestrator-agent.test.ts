@@ -227,6 +227,29 @@ describe('runOrchestrator', () => {
     expect(result.errorMessage).toContain('error_max_turns');
   });
 
+  test('runs the agent from the project root so .claude skills resolve', async () => {
+    const captured: Record<string, unknown>[] = [];
+    const query = (params: { prompt: string; options: Record<string, unknown> }) => {
+      captured.push(params.options);
+      return (async function* () {
+        yield {
+          type: 'result',
+          subtype: 'success',
+          result: '```json\n{"status":"failed","errorMessage":"x"}\n```',
+        } as AgentMessage;
+      })();
+    };
+
+    await runOrchestrator(mockConfig(), baseContext, { query });
+
+    expect(captured[0]!['cwd']).toBe(process.cwd());
+    expect(captured[0]!['additionalDirectories']).toEqual([
+      '/repos/banking',
+      '/work/output',
+      '/work/pte',
+    ]);
+  });
+
   test('passes the orchestration options to the query function', async () => {
     let captured: { prompt: string; options: Record<string, unknown> } | undefined;
     const query = (params: { prompt: string; options: Record<string, unknown> }) => {

@@ -18,7 +18,7 @@ Commands:
   help             Show this help message
 
 Options:
-  --dry-run        Read-only mode: run the orchestrator but skip Azure DevOps writes
+  --dry-run        Skip Azure DevOps writes. The agent still runs at full cost: it provisions a BC environment and publishes apps.
 
 Environment variables:
   AZURE_DEVOPS_PAT          Azure DevOps personal access token (required)
@@ -44,7 +44,10 @@ switch (command) {
   case 'watch': {
     const config = loadConfig();
     config.dryRun = dryRun;
-    if (dryRun) console.log('[DRY RUN] No writes will be made to Azure DevOps\n');
+    if (dryRun)
+      console.log(
+        '[DRY RUN] Azure DevOps writes are skipped — the agent still runs at full cost (provisions an environment, publishes apps)\n',
+      );
     await startWatcher(config);
     break;
   }
@@ -52,7 +55,10 @@ switch (command) {
   case 'run-once': {
     const config = loadConfig();
     config.dryRun = dryRun;
-    if (dryRun) console.log('[DRY RUN] No writes will be made to Azure DevOps\n');
+    if (dryRun)
+      console.log(
+        '[DRY RUN] Azure DevOps writes are skipped — the agent still runs at full cost (provisions an environment, publishes apps)\n',
+      );
     const result = await runPollCycle(config);
     console.log(
       `Done: ${result.processed} processed, ${result.errors} errors, ` +
@@ -70,7 +76,9 @@ switch (command) {
     }
     const config = loadConfig();
     config.dryRun = true;
-    console.log(`[DRY RUN] Testing processing for work item #${itemIdArg}\n`);
+    console.log(
+      `[DRY RUN] Testing processing for work item #${itemIdArg} (no ADO writes; agent runs at full cost)\n`,
+    );
     const item = await getWorkItem(config, Number(itemIdArg));
     const result = await processItem(config, item);
     console.log(

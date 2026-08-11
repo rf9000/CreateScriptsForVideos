@@ -172,8 +172,16 @@ function buildOptions(config: AppConfig): Record<string, unknown> {
     model: config.claudeModel,
     systemPrompt: readFileSync(config.promptPath, 'utf-8'),
     settingSources: ['project'],
-    cwd: config.workspaceOutputDir,
-    additionalDirectories: [config.continiaBankingPath],
+    // Run from the app root: settingSources ['project'] resolves .claude/
+    // (skills, commands) relative to cwd, and the skills are the whole
+    // orchestration. Output dirs are granted explicitly; the runtime block
+    // hands the agent absolute paths for everything it writes.
+    cwd: process.cwd(),
+    additionalDirectories: [
+      config.continiaBankingPath,
+      config.workspaceOutputDir,
+      config.pteOutputDir,
+    ],
     permissionMode: 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
     maxTurns: config.agentMaxTurns,
