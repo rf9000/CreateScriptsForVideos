@@ -16,7 +16,7 @@ CreateScriptsForVideos watches Azure DevOps for work items tagged `create script
 ## Key Patterns
 
 - **Dependency injection** via interfaces on all services for testability
-- **Exponential backoff retry** on Azure DevOps API calls (5xx/network errors)
+- **Exponential backoff retry** on Azure DevOps API calls — 429 always retried honoring Retry-After; 5xx/network only on idempotent requests
 - **Tag-driven queue** — the work-item tag is the queue, removed after each attempt; no persisted state
 - **Polling watcher** with graceful SIGINT/SIGTERM shutdown
 - **Tag-driven discovery** — WIQL narrows to candidates by tag substring + area path; exact tag match in code
@@ -32,7 +32,7 @@ CreateScriptsForVideos watches Azure DevOps for work items tagged `create script
 
 - `src/config/` — Zod env validation
 - `src/sdk/` — Azure DevOps REST client (WIQL queries, work item CRUD)
-- `src/services/` — business logic (processor, watcher, AI generator)
+- `src/services/` — business logic (processor, watcher, orchestrator agent)
 - `src/types/` — shared interfaces
 - `src/cli/` — entrypoint (`watch`, `run-once`, `test-item`)
 - `.claude/commands/create-script.md` — orchestration prompt (system prompt for the agent)

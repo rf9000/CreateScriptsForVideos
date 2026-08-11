@@ -1,6 +1,6 @@
 # Patterns Reference
 
-Quick reference for the architectural patterns used in this template. Each links to the source file where it's implemented.
+Quick reference for the architectural patterns used in this codebase. Each links to the source file where it's implemented.
 
 ## Zod Config Validation
 
@@ -18,7 +18,7 @@ Services define a `Deps` interface listing their external dependencies as functi
 
 **File:** `src/sdk/azure-devops-client.ts`
 
-`adoFetchWithRetry()` wraps `adoFetch()` with configurable retry delays (default: 1s, 2s, 4s). Retries on 5xx and network errors. Immediately re-throws 4xx errors. Tests pass `[0, 0, 0]` delays for speed.
+`adoFetchWithRetry()` wraps `adoFetch()` with configurable retry delays (default: 1s, 2s, 4s). Always retries 429 (honoring `Retry-After`); retries 5xx and network errors only for idempotent requests — non-idempotent POSTs (comments, attachments) are never retried on those. Other 4xx re-throw immediately. Tests pass `[0, 0, 0]` delays for speed.
 
 ## Tag-driven queue (no persisted state)
 
@@ -32,7 +32,7 @@ Discovery is driven entirely by the work-item tag (`queryTaggedWorkItems`), and 
 
 ## Claude SDK Integration
 
-**File:** `src/services/ai-generator.ts`
+**File:** `src/services/orchestrator-agent.ts`
 
 Uses `query()` from `@anthropic-ai/claude-agent-sdk` with a system prompt loaded from disk and a dynamically built user prompt. Streams results and returns the final text.
 

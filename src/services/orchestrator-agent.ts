@@ -175,7 +175,8 @@ function buildOptions(config: AppConfig): Record<string, unknown> {
     // Run from the app root: settingSources ['project'] resolves .claude/
     // (skills, commands) relative to cwd, and the skills are the whole
     // orchestration. Output dirs are granted explicitly; the runtime block
-    // hands the agent absolute paths for everything it writes.
+    // hands the agent explicit per-item paths (resolved against this same
+    // cwd when configured relative) for everything it writes.
     cwd: process.cwd(),
     additionalDirectories: [
       config.continiaBankingPath,

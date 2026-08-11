@@ -13,25 +13,28 @@ This pipeline:
 
 ## Getting started
 
-1. Click **"Use this template"** on GitHub to create a new repository
-2. Clone your new repo and install dependencies:
+1. Clone this repo and install dependencies:
    ```bash
-   git clone <your-repo-url>
-   cd <your-repo>
+   git clone <this-repo-url>
+   cd CreateScriptsForVideos
    bun install
    ```
-3. Copy `.env.example` to `.env` and fill in your Azure DevOps credentials:
+2. Copy `.env.example` to `.env` and fill in your Azure DevOps credentials:
    ```bash
    cp .env.example .env
    ```
-4. Run tests to verify everything works:
+3. Run tests to verify everything works:
    ```bash
    bun test
    ```
-5. Try the CLI:
+4. Try the CLI:
    ```bash
    bun src/cli/index.ts help
    bun src/cli/index.ts run-once --dry-run
+   ```
+5. Start the watcher:
+   ```bash
+   bun run start
    ```
 
 ## Customizing for your project
@@ -53,7 +56,7 @@ src/
 ├── sdk/azure-devops-client.ts # Azure DevOps REST API client with retry
 ├── services/
 │   ├── watcher.ts            # Polling loop with graceful shutdown
-│   ├── processor.ts          # Business logic (replace with your own)
+│   ├── processor.ts          # Business logic (processor)
 │   └── orchestrator-agent.ts # Claude agent integration
 └── types/index.ts            # Shared TypeScript interfaces
 
@@ -74,4 +77,4 @@ Add `--dry-run` to any command to skip Azure DevOps writes.
 
 ## Patterns
 
-See [PATTERNS.md](PATTERNS.md) for a quick reference of all architectural patterns used in this template.
+See [PATTERNS.md](PATTERNS.md) for a quick reference of all architectural patterns used in this codebase.
