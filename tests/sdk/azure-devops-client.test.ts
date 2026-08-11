@@ -502,9 +502,40 @@ describe('removeTagFromWorkItem', () => {
       path: string;
       value: string;
     }>;
-    expect(ops[0]!.op).toBe('replace');
-    expect(ops[0]!.path).toBe('/fields/System.Tags');
-    expect(ops[0]!.value).toBe('demo; other');
+    expect(ops[1]!.op).toBe('replace');
+    expect(ops[1]!.path).toBe('/fields/System.Tags');
+    expect(ops[1]!.value).toBe('demo; other');
+  });
+
+  test('guards the tags rewrite with a rev test op', async () => {
+    setSequentialMockFetch(
+      { body: { id: 1, rev: 7, url: 'u', fields: { 'System.Tags': 'create script; keep' } } },
+      { body: { id: 1, rev: 8, url: 'u', fields: {} } },
+    );
+    await removeTagFromWorkItem(mockConfig(), 1, 'create script');
+    const patchInit = mockFn.mock.calls[1]![1] as RequestInit;
+    const ops = JSON.parse(String(patchInit.body)) as Array<Record<string, unknown>>;
+    expect(ops[0]).toEqual({ op: 'test', path: '/rev', value: 7 });
+    expect(ops[1]).toEqual({ op: 'replace', path: '/fields/System.Tags', value: 'keep' });
+    const getUrl = String(mockFn.mock.calls[0]![0]);
+    expect(getUrl).toContain('fields=System.Tags');
+    expect(getUrl).not.toContain('$expand');
+  });
+
+  test('re-reads and retries once when the rev test fails', async () => {
+    setSequentialMockFetch(
+      { body: { id: 1, rev: 7, url: 'u', fields: { 'System.Tags': 'create script' } } },
+      { body: 'rev mismatch', status: 409 },
+      { body: { id: 1, rev: 9, url: 'u', fields: { 'System.Tags': 'create script; new-tag' } } },
+      { body: { id: 1, rev: 10, url: 'u', fields: {} } },
+    );
+    await removeTagFromWorkItem(mockConfig(), 1, 'create script');
+    expect(mockFn.mock.calls.length).toBe(4);
+    const secondPatch = JSON.parse(
+      String((mockFn.mock.calls[3]![1] as RequestInit).body),
+    ) as Array<Record<string, unknown>>;
+    expect(secondPatch[0]).toEqual({ op: 'test', path: '/rev', value: 9 });
+    expect(secondPatch[1]!['value']).toBe('new-tag');
   });
 });
 

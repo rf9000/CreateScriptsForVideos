@@ -213,26 +213,49 @@ export async function getWorkItemComments(
  * Remove a tag from a work item's `System.Tags` (case-insensitive). No-op if the
  * tag isn't present. Uses a `replace` patch — `add` on System.Tags merges rather
  * than overwriting, so it would never actually remove anything.
+ *
+ * The rewrite replaces the WHOLE tag string, and hours can pass between item
+ * discovery and this call — so re-read the tags fresh and guard the PATCH with
+ * a `test` op on `rev`. On a conflict (someone edited the item in the window
+ * between our GET and PATCH), re-read and retry once.
  */
 export async function removeTagFromWorkItem(
   config: AppConfig,
   workItemId: number,
   tagToRemove: string,
 ): Promise<void> {
-  const workItem = await getWorkItem(config, workItemId);
-  const currentTags = String(workItem.fields['System.Tags'] ?? '');
-  const remaining = currentTags
-    .split(';')
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0 && t.toLowerCase() !== tagToRemove.toLowerCase());
-  const path = `wit/workitems/${workItemId}?api-version=7.0`;
-  await adoFetchWithRetry<WorkItemResponse>(config, path, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json-patch+json' },
-    body: JSON.stringify([
-      { op: 'replace', path: '/fields/System.Tags', value: remaining.join('; ') },
-    ]),
-  });
+  const tagLower = tagToRemove.toLowerCase();
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const getPath = `wit/workitems/${workItemId}?fields=System.Tags&api-version=7.0`;
+    const workItem = await adoFetchWithRetry<WorkItemResponse>(config, getPath);
+    const remaining = String(workItem.fields['System.Tags'] ?? '')
+      .split(';')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0 && t.toLowerCase() !== tagLower);
+
+    try {
+      await adoFetchWithRetry<WorkItemResponse>(
+        config,
+        `wit/workitems/${workItemId}?api-version=7.0`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json-patch+json' },
+          body: JSON.stringify([
+            { op: 'test', path: '/rev', value: workItem.rev },
+            { op: 'replace', path: '/fields/System.Tags', value: remaining.join('; ') },
+          ]),
+        },
+      );
+      return;
+    } catch (err) {
+      const conflict =
+        err instanceof AzureDevOpsError &&
+        (err.statusCode === 409 || err.statusCode === 412 || err.statusCode === 400);
+      if (!conflict || attempt === 2) throw err;
+      // rev moved between GET and PATCH — loop re-reads and retries once
+    }
+  }
 }
 
 /** Add a comment to a work item. */
