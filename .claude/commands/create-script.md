@@ -95,4 +95,6 @@ End your reply with a single fenced ```json block (and nothing after it) shaped 
 ```
 
 On failure use `{"status":"failed","errorMessage":"...","assumptions":[],"gaps":[]}` and include
-whatever partial paths you did produce.
+whatever partial paths you did produce. **If an environment was already provisioned when the
+failure occurred, include its full `env` object** (id, name, url, username, password) — the
+environment is left running and the failure report must tell a human it exists.

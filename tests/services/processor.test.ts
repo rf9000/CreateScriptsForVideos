@@ -285,6 +285,39 @@ describe('processItem — brief hygiene', () => {
   });
 });
 
+describe('failure comment env reporting', () => {
+  test('failure comment includes provisioned env details when present', async () => {
+    const deps = makeDeps({
+      runOrchestrator: mock(async () => ({
+        status: 'failed',
+        errorMessage: 'compile failed',
+        env: {
+          id: 'env-9', name: 'Leaked Env', url: 'https://leak.example.com',
+          username: 'admin', password: 'pw',
+        },
+      }) as ScriptResult),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('still running');
+    expect(html).toContain('https://leak.example.com');
+    expect(html).toContain('env-9');
+  });
+
+  test('env comment lists assumptions when present', async () => {
+    const deps = makeDeps({
+      runOrchestrator: mock(async () => ({
+        ...successResult,
+        assumptions: ['Assumed DK localization'],
+      }) as ScriptResult),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('Assumptions');
+    expect(html).toContain('Assumed DK localization');
+  });
+});
+
 describe('isBotComment', () => {
   test('matches marker and legacy phrases, not user text', () => {
     expect(isBotComment(`anything ${BOT_COMMENT_MARKER} anything`)).toBe(true);

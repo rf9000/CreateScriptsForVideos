@@ -130,9 +130,9 @@ describe("loadConfig", () => {
       expect(config.pteOutputDir).toBe("/tmp/pte");
     });
 
-    it("defaults agentMaxTurns to 120 and coerces overrides", () => {
-      expect(loadConfig(validEnv).agentMaxTurns).toBe(120);
-      expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "200" }).agentMaxTurns).toBe(200);
+    it("defaults agentMaxTurns to 200 and coerces overrides", () => {
+      expect(loadConfig(validEnv).agentMaxTurns).toBe(200);
+      expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "300" }).agentMaxTurns).toBe(300);
     });
 
     it("defaults outputRetentionDays to 14", () => {

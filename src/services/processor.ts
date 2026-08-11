@@ -93,6 +93,11 @@ function buildEnvComment(result: ScriptResult, fileName: string): string {
     `<li><strong>Password:</strong> ${escapeHtml(env?.password ?? '(unknown)')}</li>`,
     '</ul>',
   ];
+  if (result.assumptions && result.assumptions.length > 0) {
+    lines.push('<p><strong>Assumptions made:</strong></p>', '<ul>');
+    for (const a of result.assumptions) lines.push(`<li>${escapeHtml(a)}</li>`);
+    lines.push('</ul>');
+  }
   if (result.gaps && result.gaps.length > 0) {
     lines.push('<p><strong>Gaps to be aware of:</strong></p>', '<ul>');
     for (const g of result.gaps) lines.push(`<li>${escapeHtml(g)}</li>`);
@@ -106,12 +111,26 @@ function buildEnvComment(result: ScriptResult, fileName: string): string {
 }
 
 function buildFailureComment(result: ScriptResult): string {
-  return [
+  const lines = [
     '<p>Script generation failed for this work item:</p>',
     `<blockquote>${escapeHtml(result.errorMessage ?? 'unknown error')}</blockquote>`,
+  ];
+  if (result.env) {
+    lines.push(
+      '<p><strong>An environment was provisioned before the failure and is still running:</strong></p>',
+      '<ul>',
+      `<li><strong>Environment:</strong> ${escapeHtml(result.env.name)} (${escapeHtml(result.env.id)})</li>`,
+      `<li><strong>URL:</strong> <a href="${escapeHtml(result.env.url)}">${escapeHtml(result.env.url)}</a></li>`,
+      `<li><strong>Username:</strong> ${escapeHtml(result.env.username)}</li>`,
+      `<li><strong>Password:</strong> ${escapeHtml(result.env.password)}</li>`,
+      '</ul>',
+    );
+  }
+  lines.push(
     '<p>The tag has been removed. <strong>Re-add the tag</strong> (e.g. after adding more detail) to try again.</p>',
     botFooter,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 export async function processItem(
