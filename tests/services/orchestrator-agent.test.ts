@@ -16,7 +16,6 @@ function mockConfig(): AppConfig {
     orgUrl: 'https://dev.azure.com/my-org',
     project: 'my-project',
     pat: 'test-pat-token',
-    wiqlQuery: 'q',
     pollIntervalMinutes: 5,
     claudeModel: 'claude-sonnet-4-6',
     promptPath: '.claude/commands/create-script.md',

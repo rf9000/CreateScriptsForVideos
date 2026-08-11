@@ -1,13 +1,10 @@
 import { z } from "zod";
 import type { AppConfig } from "../types/index.ts";
 
-const DEFAULT_WIQL = "SELECT [System.Id] FROM workitems WHERE [System.State] = 'New' ORDER BY [System.CreatedDate] DESC";
-
 const envSchema = z.object({
   AZURE_DEVOPS_PAT: z.string().min(1, "AZURE_DEVOPS_PAT is required"),
   AZURE_DEVOPS_ORG: z.string().min(1, "AZURE_DEVOPS_ORG is required"),
   AZURE_DEVOPS_PROJECT: z.string().min(1, "AZURE_DEVOPS_PROJECT is required"),
-  AZURE_DEVOPS_WIQL_QUERY: z.string().default(DEFAULT_WIQL),
   AZURE_DEVOPS_AREA_PATH: z.string().default(""),
   CREATE_SCRIPT_TAG: z.string().default("create script"),
   CONTINIA_BANKING_PATH: z.string().default("./continia-banking"),
@@ -44,7 +41,6 @@ export function loadConfig(
     orgUrl: `https://dev.azure.com/${parsed.AZURE_DEVOPS_ORG}`,
     project: parsed.AZURE_DEVOPS_PROJECT,
     pat: parsed.AZURE_DEVOPS_PAT,
-    wiqlQuery: parsed.AZURE_DEVOPS_WIQL_QUERY,
     pollIntervalMinutes: parsed.POLL_INTERVAL_MINUTES,
     claudeModel: parsed.CLAUDE_MODEL,
     promptPath: parsed.PROMPT_PATH,

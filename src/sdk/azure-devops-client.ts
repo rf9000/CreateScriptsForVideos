@@ -126,20 +126,6 @@ export async function getWorkItemsBatch(
   return data.value;
 }
 
-export async function updateWorkItemField(
-  config: AppConfig,
-  workItemId: number,
-  fieldName: string,
-  value: string,
-): Promise<WorkItemResponse> {
-  const path = `wit/workitems/${workItemId}?api-version=7.0`;
-  return adoFetchWithRetry<WorkItemResponse>(config, path, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json-patch+json' },
-    body: JSON.stringify([{ op: 'add', path: `/fields/${fieldName}`, value }]),
-  });
-}
-
 const DISCOVERY_FIELDS = [
   'System.Tags',
   'System.Title',

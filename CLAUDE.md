@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DevOpsPullTemplate is a GitHub template repository for Azure DevOps automation projects. It provides production-ready scaffolding for periodically pulling data from Azure DevOps, processing it with Claude AI, and pushing results back. The shipped example processes work items via WIQL queries.
+CreateScriptsForVideos watches Azure DevOps for work items tagged `create script` and turns each one into a complete demo package for a Continia Banking feature: a Markdown recording script, a demo-data PTE (AL extension), and a running Business Central environment with everything published. Orchestration lives in `.claude/commands/create-script.md` (the agent's system prompt) and the `.claude/skills/` set; the TypeScript in `src/` is the watcher/processor shell around the agent.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ DevOpsPullTemplate is a GitHub template repository for Azure DevOps automation p
 - **Exponential backoff retry** on Azure DevOps API calls (5xx/network errors)
 - **Tag-driven queue** — the work-item tag is the queue, removed after each attempt; no persisted state
 - **Polling watcher** with graceful SIGINT/SIGTERM shutdown
-- **WIQL queries** to find work items to process
+- **Tag-driven discovery** — WIQL narrows to candidates by tag substring + area path; exact tag match in code
 
 ## Commands
 
@@ -33,6 +33,8 @@ DevOpsPullTemplate is a GitHub template repository for Azure DevOps automation p
 - `src/config/` — Zod env validation
 - `src/sdk/` — Azure DevOps REST client (WIQL queries, work item CRUD)
 - `src/services/` — business logic (processor, watcher, AI generator)
-- `src/state/` — JSON persistence
 - `src/types/` — shared interfaces
+- `src/cli/` — entrypoint (`watch`, `run-once`, `test-item`)
+- `.claude/commands/create-script.md` — orchestration prompt (system prompt for the agent)
+- `.claude/skills/` — demo-data-orchestrator, demo-data-validator, demo-spec-generator, continia-* deploy/test skills
 - `tests/` — mirrors src/ structure

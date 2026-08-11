@@ -8,7 +8,6 @@ import {
   queryTaggedWorkItems,
   getWorkItem,
   getWorkItemsBatch,
-  updateWorkItemField,
   getWorkItemComments,
   addWorkItemComment,
   removeTagFromWorkItem,
@@ -25,7 +24,6 @@ function mockConfig(): AppConfig {
     orgUrl: 'https://dev.azure.com/my-org',
     project: 'my-project',
     pat: 'test-pat-token',
-    wiqlQuery: "SELECT [System.Id] FROM workitems WHERE [System.State] = 'New'",
     pollIntervalMinutes: 5,
     claudeModel: 'claude-sonnet-4-6',
     promptPath: './prompt.md',
@@ -314,48 +312,6 @@ describe('getWorkItemsBatch', () => {
     const config = mockConfig();
     const result = await getWorkItemsBatch(config, []);
     expect(result).toEqual([]);
-  });
-});
-
-describe('updateWorkItemField', () => {
-  test('sends PATCH with json-patch body and correct content-type', async () => {
-    const updated = {
-      id: 100,
-      fields: { 'Custom.Field': 'New value' },
-      rev: 4,
-      url: 'https://example.com/100',
-    };
-    setMockFetch(updated);
-    const config = mockConfig();
-
-    const result = await updateWorkItemField(
-      config,
-      100,
-      'Custom.Field',
-      'New value',
-    );
-
-    expect(result).toEqual(updated);
-
-    const call = mockFn.mock.calls[0]!;
-    const url = call[0] as string;
-    const init = call[1] as RequestInit;
-
-    expect(url).toContain('wit/workitems/100');
-    expect(url).toContain('api-version=7.0');
-    expect(init.method).toBe('PATCH');
-
-    const headers = init.headers as Record<string, string>;
-    expect(headers['Content-Type']).toBe('application/json-patch+json');
-
-    const body = JSON.parse(init.body as string) as Array<{
-      op: string;
-      path: string;
-      value: string;
-    }>;
-    expect(body).toEqual([
-      { op: 'add', path: '/fields/Custom.Field', value: 'New value' },
-    ]);
   });
 });
 

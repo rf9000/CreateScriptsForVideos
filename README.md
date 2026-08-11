@@ -1,15 +1,15 @@
-# DevOpsPullTemplate
+# CreateScriptsForVideos
 
-A GitHub template repository for building Azure DevOps automation projects with Bun, TypeScript, Zod, and Claude AI.
+Watches Azure DevOps for work items tagged `create script` and turns each one into a complete demo package for a Continia Banking feature: a Markdown recording script, a demo-data PTE (AL extension), and a running Business Central environment with everything published.
 
 ## What is this?
 
-This template provides production-ready scaffolding for projects that:
-- Periodically pull data from Azure DevOps (work items, or any entity via WIQL)
-- Process items with AI using Claude
-- Push results back to Azure DevOps (update fields, add comments, etc.)
-- Track state to avoid reprocessing
-- Run as a watcher (continuous polling) or on-demand (single run)
+This pipeline:
+- Polls Azure DevOps for work items tagged `create script` (WIQL narrows candidates, exact tag match happens in code)
+- Runs a Claude agent (orchestrated by `.claude/commands/create-script.md` and the `.claude/skills/` set) to research the feature, generate demo data, and write the recording script
+- Publishes a demo-data PTE and a running BC environment, then reports back to the work item
+- Removes the tag after each attempt — the tag itself is the queue, no persisted state
+- Runs as a watcher (continuous polling) or on-demand (single run)
 
 ## Getting started
 
@@ -38,9 +38,9 @@ This template provides production-ready scaffolding for projects that:
 
 1. **Update `package.json`** — change the `name` field
 2. **Update `.env.example`** — add any project-specific env vars
-3. **Customize the WIQL query** — set `AZURE_DEVOPS_WIQL_QUERY` to find the items you want to process
+3. **Adjust discovery** — set `CREATE_SCRIPT_TAG` / `AZURE_DEVOPS_AREA_PATH` to scope which work items get picked up
 4. **Replace the processor** — edit `src/services/processor.ts` with your business logic
-5. **Replace the AI prompt** — edit `.claude/commands/do-process-item.md`
+5. **Update the orchestration prompt** — edit `.claude/commands/create-script.md`
 6. **Update types** — add project-specific interfaces to `src/types/index.ts`
 7. **Update this README** — describe what your project does
 

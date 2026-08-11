@@ -18,7 +18,7 @@ const DAY_SEC = 24 * 60 * 60;
 function config(dir: string, retentionDays: number): AppConfig {
   return {
     org: 'o', orgUrl: 'u', project: 'p', pat: 't',
-    wiqlQuery: 'q', pollIntervalMinutes: 5, claudeModel: 'm', promptPath: 'pp',
+    pollIntervalMinutes: 5, claudeModel: 'm', promptPath: 'pp',
     dryRun: false, areaPath: '', createScriptTag: 'create script',
     continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
     workspaceOutputDir: dir, pteOutputDir: dir, lspPluginPath: '',

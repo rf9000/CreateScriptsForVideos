@@ -4,7 +4,6 @@ export interface AppConfig {
   orgUrl: string;
   project: string;
   pat: string;
-  wiqlQuery: string;
   pollIntervalMinutes: number;
   claudeModel: string;
   promptPath: string;

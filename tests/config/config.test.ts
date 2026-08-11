@@ -43,22 +43,6 @@ describe("loadConfig", () => {
     expect(config.promptPath).toBe(".claude/commands/create-script.md");
   });
 
-  it("uses default WIQL query when not provided", () => {
-    const config = loadConfig(validEnv);
-    expect(config.wiqlQuery).toContain("SELECT [System.Id] FROM workitems");
-  });
-
-  it("uses custom WIQL query when provided", () => {
-    const env = {
-      ...validEnv,
-      AZURE_DEVOPS_WIQL_QUERY: "SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active'",
-    };
-    const config = loadConfig(env);
-    expect(config.wiqlQuery).toBe(
-      "SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active'",
-    );
-  });
-
   it("overrides defaults when optional vars are provided", () => {
     const env = {
       ...validEnv,
