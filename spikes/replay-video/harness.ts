@@ -18,9 +18,9 @@ import { parse, stringify } from 'yaml';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { basename, join, resolve } from 'path';
-import { animateClick, injectCursor } from './cursor.ts';
-import { dismissTeachingTips, findTarget, stage as stageStep, typeVisibly, visibility } from './staging.ts';
-import type { StagingHints, Visibility } from './staging.ts';
+import { animateClick, injectCursor } from '../../src/video/cursor.ts';
+import { dismissTeachingTips, findTarget, stage as stageStep, typeVisibly, visibility } from '../../src/video/staging.ts';
+import type { StagingHints, Visibility } from '../../src/video/staging.ts';
 import { existsSync } from 'fs';
 
 type Target = { page?: string; field?: string; action?: string; part?: string; [k: string]: unknown };

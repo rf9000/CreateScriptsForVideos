@@ -279,7 +279,7 @@ export interface AttachmentRef {
 export async function uploadAttachment(
   config: AppConfig,
   fileName: string,
-  content: string | Uint8Array,
+  content: string | Uint8Array<ArrayBuffer>,
 ): Promise<AttachmentRef> {
   const path = `wit/attachments?fileName=${encodeURIComponent(fileName)}&api-version=7.1`;
   return adoFetchWithRetry<AttachmentRef>(config, path, {

@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import type { Frame, Locator, Page } from 'playwright';
 
 /**
@@ -8,18 +9,8 @@ import type { Frame, Locator, Page } from 'playwright';
  * markup probed on BC 29 (probe-fasttab.ts).
  */
 
-export type Step = {
-  type: string;
-  target?: Array<{ page?: string; field?: string; action?: string; repeater?: string; [k: string]: unknown }>;
-  caption?: string;
-  row?: number | string;
-  value?: unknown;
-  description?: string;
-  [k: string]: unknown;
-};
-
-/** Optional per-recording hints, e.g. which FastTab holds a field (the generator knows this from AL). */
-export type StagingHints = { fieldGroups?: Record<string, string> };
+import type { RecordingStep as Step, StagingHints } from './recording.ts';
+export type { StagingHints };
 
 export type Visibility = 'in-view' | 'edge' | 'off-screen' | 'not-found';
 
@@ -45,8 +36,8 @@ export function shownCaption(step: Step): string | undefined {
   return typeof step.description === 'string' ? /<caption>([^<]+)<\/caption>/.exec(step.description)?.[1] : undefined;
 }
 
-export const fieldOf = (step: Step) => step.target?.find((t) => t.field)?.field;
-const actionOf = (step: Step) => step.target?.find((t) => t.action)?.action;
+export const fieldOf = (step: Step) => step.target?.find((t) => t['field'])?.['field'] as string | undefined;
+const actionOf = (step: Step) => step.target?.find((t) => t['action'])?.['action'] as string | undefined;
 
 /** Last visible match wins: BC edit mode renders duplicates after the originals. */
 async function lastVisible(candidates: Locator[]): Promise<Locator | undefined> {
@@ -83,8 +74,8 @@ export async function findTarget(frame: Frame, step: Step): Promise<Locator | un
           : []),
       ]);
       if (hit) return hit;
-    } else if (actionOf(step) || step.caption) {
-      const name = step.caption ?? caption ?? actionOf(step)!;
+    } else if (actionOf(step) || step['caption']) {
+      const name = (step['caption'] as string | undefined) ?? caption ?? actionOf(step)!;
       const hit = await lastVisible([
         scope.getByRole('menuitem', { name, exact: true }),
         scope.getByRole('button', { name, exact: true }),
@@ -93,7 +84,7 @@ export async function findTarget(frame: Frame, step: Step): Promise<Locator | un
         scope.getByText(name, { exact: true }),
       ]);
       if (hit) return hit;
-    } else if (step.target?.some((t) => t.repeater)) {
+    } else if (step.target?.some((t) => t['repeater'])) {
       // Row invoke: the current (selected) row of the grid, else the first data row.
       const hit = await lastVisible([
         scope.locator('table.ms-nav-grid-data-table tbody tr[aria-selected="true"]'),
@@ -270,13 +261,13 @@ export async function stage(
     }
   }
 
-  if (!target && (field || step.target?.some((t) => t.repeater))) {
+  if (!target && (field || step.target?.some((t) => t['repeater']))) {
     target = await scrollToReveal(frame, find, report);
   }
 
   // Center fields and rows only: action bars and Role Center links sit at the top by design,
   // and scrolling toward them just adds motion.
-  if (target && (field || step.target?.some((t) => t.repeater))) {
+  if (target && (field || step.target?.some((t) => t['repeater']))) {
     await center(target, report);
     await page.waitForTimeout(report.scrolled.length ? 700 : 150);
     target = (await find()) ?? target;

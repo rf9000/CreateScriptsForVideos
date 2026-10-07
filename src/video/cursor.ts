@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import type { Page } from 'playwright';
 
 // Ported from continia-demo-generator/src/cursor.ts (V1). Purely cosmetic:
