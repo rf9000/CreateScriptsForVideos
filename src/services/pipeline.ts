@@ -11,7 +11,8 @@ import { countryAppDir, discoverBankingApps, requiredBcVersion } from '../utils/
 import type { BankingApp } from '../utils/banking-repo.ts';
 import { makeVideo } from '../video/make-video.ts';
 import type { VideoResult } from '../video/make-video.ts';
-import { lintRecording, loadVideoInputs } from '../video/recording.ts';
+import { checkRecording, symbolDirsFor } from '../video/recording-check.ts';
+import { loadSymbolIndex } from '../video/symbols.ts';
 
 /**
  * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
@@ -50,6 +51,12 @@ export const validateOutputSchema = z.object({
   warnings: z.array(z.string()),
 });
 
+export const recordingOutputSchema = z.object({
+  status: z.enum(['success', 'failed']),
+  notes: z.array(z.string()).describe('Anything a reviewer of the video should know'),
+  errorMessage: z.string().optional().describe('Required when status is failed'),
+});
+
 export const deployOutputSchema = z.object({
   status: z.enum(['success', 'failed']),
   gaps: z.array(z.string()),
@@ -71,6 +78,8 @@ export interface PipelineState {
   mode?: ItemMode;
   /** A recording already ran on this environment (its demo data may have changed). */
   videoAttempted?: boolean;
+  /** recording.yml was written and passed the symbol check. */
+  recordingChecked?: boolean;
 }
 
 export interface PipelineDeps {
@@ -84,6 +93,8 @@ export interface PipelineDeps {
   readAppName: (ptePath: string) => string;
   discoverBankingApps: (repoPath: string) => BankingApp[];
   makeVideo: (input: Parameters<typeof makeVideo>[0]) => Promise<VideoResult>;
+  /** Structure + symbol-name check of recording.yml; writes FastTab hints when clean. */
+  checkRecording: (itemDir: string, ptePath: string) => string[];
 }
 
 export const defaultPipelineDeps: PipelineDeps = {
@@ -100,6 +111,7 @@ export const defaultPipelineDeps: PipelineDeps = {
   fileExists: existsSync,
   discoverBankingApps,
   makeVideo: (input) => makeVideo(input),
+  checkRecording: (itemDir, ptePath) => checkRecording(itemDir, loadSymbolIndex(symbolDirsFor(ptePath))),
   readAppName: (ptePath) => {
     const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
     if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
@@ -242,7 +254,7 @@ export async function runPipeline(
     const run = await runAgentStage(
       config,
       'generate',
-      mode === 'video' ? ['invariants', 'generate', 'generate-video'] : ['invariants', 'generate'],
+      ['invariants', 'generate'],
       `${brief}\n\n${where}`,
       generateOutputSchema,
       deps.stageDeps,
@@ -254,17 +266,6 @@ export async function runPipeline(
     if (!deps.fileExists(paths.scriptPath)) return failed(`recording script not written to ${paths.scriptPath}`);
     if (!deps.fileExists(join(paths.ptePath, 'app.json'))) return failed(`PTE app.json not written in ${paths.ptePath}`);
     state.generate = run.output;
-    if (mode === 'video') {
-      // Lint problems become gaps, not failures: the script and env are still worth
-      // delivering, and makeVideo lints again and reports.
-      const itemDir = join(paths.scriptPath, '..');
-      try {
-        const problems = lintRecording(loadVideoInputs(itemDir).recording);
-        if (problems.length) state.generate.gaps.push(`video: recording.yml is not replayable: ${problems.join('; ')}`);
-      } catch (err) {
-        state.generate.gaps.push(`video: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
     save();
   }
 
@@ -347,6 +348,31 @@ export async function runPipeline(
     }
     const env = await collectEnv(cli, state.envId);
     if (mode !== 'video') return { ...base(), status: 'success', env };
+    const itemDir = join(paths.scriptPath, '..');
+    const videoFailed = (error: string): ScriptResult => {
+      log(`  Video failed: ${error}`);
+      return { ...base(), status: 'success', env, video: { ok: false, error } };
+    };
+
+    // G. Recording: written after deploy, when the PTE's symbols (Microsoft's included) are on disk.
+    if (!state.recordingChecked) {
+      const recordingPrompt = [
+        brief,
+        where,
+        '## Recording tools',
+        `- Recording script to turn into a recording: ${paths.scriptPath}`,
+        `- Write: ${join(itemDir, 'recording.yml')} and ${join(itemDir, 'narration.yml')}`,
+        `- Look up a page's real names: \`bun src/cli/index.ts symbols "${paths.ptePath}" "<page name>"\``,
+        `- Check your recording: \`bun src/cli/index.ts recording-check "${itemDir}" "${paths.ptePath}"\``,
+      ].join('\n\n');
+      const run = await runAgentStage(config, 'recording', ['invariants', 'recording'], recordingPrompt, recordingOutputSchema, deps.stageDeps);
+      if (!record(run)) return videoFailed(run.error);
+      if (run.output.status === 'failed') return videoFailed(run.output.errorMessage || 'recording stage failed without a message');
+      const problems = deps.checkRecording(itemDir, paths.ptePath);
+      if (problems.length) return videoFailed(`recording.yml failed the check: ${problems.join('; ')}`);
+      state.recordingChecked = true;
+      save();
+    }
     const reused = state.videoAttempted === true;
     state.videoAttempted = true;
     save();

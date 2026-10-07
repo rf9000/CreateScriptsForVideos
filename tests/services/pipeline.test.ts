@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { describe, test, expect, mock } from 'bun:test';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { runPipeline, buildBrief, itemPaths, ACTIVATION_APP_ID } from '../../src/services/pipeline.ts';
@@ -21,13 +22,14 @@ const outputs: Record<string, unknown> = {
   },
   validate: { status: 'passed', blockers: [], warnings: ['val warning'] },
   deploy: { status: 'success', gaps: [] },
+  recording: { status: 'success', notes: [] },
 };
 
 /** Query fake that answers each stage from `byStage`, keyed by the stage prompt name. */
 function stageQuery(byStage: Record<string, unknown>, cost = 1) {
   return mock<QueryFn>(({ options }) => {
     const append = (options.systemPrompt as { append: string }).append;
-    const stage = ['generate', 'validate', 'deploy'].find((s) => append.includes(`<${s}>`))!;
+    const stage = ['generate', 'validate', 'deploy', 'recording'].find((s) => append.includes(`<${s}>`))!;
     return (async function* () {
       yield {
         type: 'result', subtype: 'success', is_error: false, result: '',
@@ -70,6 +72,7 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     fileExists: mock(() => true),
     readAppName: mock(() => 'Continia Demo Data - Merge Rules'),
     makeVideo: mock(async () => ({ ok: true, videoPath: '/out/42/demo.mp4' }) as { ok: boolean; videoPath?: string; error?: string }),
+    checkRecording: mock((_itemDir: string, _ptePath: string): string[] => []),
     discoverBankingApps: mock(() => [
       { dir: 'base-application', name: 'Continia Banking', application: '29.0.0.0', platform: '29.0.0.0' },
       { dir: 'banking-dk', name: 'Continia Banking DK', application: '29.0.0.0' },
@@ -227,18 +230,43 @@ describe('runPipeline', () => {
     expect(saved).not.toContain('pw');
   });
 
-  test('video mode appends the video prompt and makes the video after verify', async () => {
+  test('video mode: a recording stage after deploy, a symbol check, then the video', async () => {
     const { deps, query } = makeDeps();
     const result = await runPipeline(testConfig(), context, { mode: 'video' }, deps);
-    const generateAppend = (query.mock.calls[0]![0].options.systemPrompt as { append: string }).append;
-    expect(generateAppend).toContain('<generate-video>');
+    const appendOf = (i: number) => (query.mock.calls[i]![0].options.systemPrompt as { append: string }).append;
+    expect(appendOf(0)).not.toContain('<generate-video>');
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(appendOf(3)).toContain('<recording>');
+    const paths = itemPaths(testConfig(), 42);
+    const recordingPrompt = query.mock.calls[3]![0].prompt;
+    expect(recordingPrompt).toContain(`recording-check "${join(paths.scriptPath, '..')}" "${paths.ptePath}"`);
+    expect(recordingPrompt).toContain(`symbols "${paths.ptePath}" "<page name>"`);
+    expect(deps.checkRecording).toHaveBeenCalledWith(join(paths.scriptPath, '..'), paths.ptePath);
     expect(deps.makeVideo).toHaveBeenCalledTimes(1);
     const videoInput = (deps.makeVideo.mock.calls[0] as unknown[])[0] as { url: string; user: string };
     expect(videoInput.url).toBe('https://bc/env-1');
     expect(videoInput.user).toBe('ADMIN');
     expect(result.status).toBe('success');
     expect(result.video).toEqual({ ok: true, path: '/out/42/demo.mp4' });
-    expect(result.gaps?.some((g) => g.startsWith('video:'))).toBe(true);
+  });
+
+  test('a recording that fails the symbol check is not recorded', async () => {
+    const { deps } = makeDeps();
+    deps.checkRecording.mockImplementation(() => ['step 0: action "BankAccounts" is not on page "X"']);
+    const result = await runPipeline(testConfig(), context, { mode: 'video' }, deps);
+    expect(deps.makeVideo).not.toHaveBeenCalled();
+    expect(result.status).toBe('success');
+    expect(result.video).toEqual({
+      ok: false,
+      error: 'recording.yml failed the check: step 0: action "BankAccounts" is not on page "X"',
+    });
+  });
+
+  test('script mode never runs the recording stage', async () => {
+    const { deps, query } = makeDeps();
+    await runPipeline(testConfig(), context, {}, deps);
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(deps.checkRecording).not.toHaveBeenCalled();
   });
 
   test('script mode never makes a video', async () => {

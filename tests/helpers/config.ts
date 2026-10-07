@@ -31,6 +31,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       generate: { model: 'gen-model', maxTurns: 150, timeoutMinutes: 60 },
       validate: { model: 'val-model', maxTurns: 60, timeoutMinutes: 30 },
       deploy: { model: 'dep-model', maxTurns: 80, timeoutMinutes: 45 },
+      recording: { model: 'dep-model', maxTurns: 60, timeoutMinutes: 30 },
     },
     ...overrides,
   };

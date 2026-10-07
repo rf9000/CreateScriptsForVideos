@@ -61,6 +61,7 @@ describe("loadConfig", () => {
     });
     expect(config.stages.validate.maxTurns).toBe(60);
     expect(config.stages.deploy.timeoutMinutes).toBe(45);
+    expect(config.stages.recording).toMatchObject({ maxTurns: 60, timeoutMinutes: 30 });
   });
 
   it("overrides defaults when optional vars are provided", () => {

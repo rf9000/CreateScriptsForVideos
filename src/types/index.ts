@@ -47,7 +47,7 @@ export interface AppConfig {
 }
 
 /** The pipeline stages that run an agent. */
-export type StageName = 'generate' | 'validate' | 'deploy';
+export type StageName = 'generate' | 'validate' | 'deploy' | 'recording';
 
 /** Model and limits for one agent stage. */
 export interface StageConfig {

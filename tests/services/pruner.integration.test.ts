@@ -36,6 +36,7 @@ function config(dir: string, retentionDays: number): AppConfig {
       generate: { model: 'claude-sonnet-4-6', maxTurns: 150, timeoutMinutes: 60 },
       validate: { model: 'claude-sonnet-4-6', maxTurns: 60, timeoutMinutes: 30 },
       deploy: { model: 'claude-sonnet-4-6', maxTurns: 80, timeoutMinutes: 45 },
+      recording: { model: 'claude-sonnet-4-6', maxTurns: 60, timeoutMinutes: 30 },
     },
   };
 }

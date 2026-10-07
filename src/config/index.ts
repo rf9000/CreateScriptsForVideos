@@ -38,6 +38,7 @@ const STAGE_DEFAULTS: Record<StageName, { maxTurns: number; timeoutMinutes: numb
   generate: { maxTurns: 150, timeoutMinutes: 60 },
   validate: { maxTurns: 60, timeoutMinutes: 30 },
   deploy: { maxTurns: 80, timeoutMinutes: 45 },
+  recording: { maxTurns: 60, timeoutMinutes: 30 },
 };
 
 function loadStageConfig(
@@ -133,6 +134,7 @@ export function loadConfig(
       generate: stage("generate"),
       validate: stage("validate"),
       deploy: stage("deploy"),
+      recording: stage("recording"),
     },
   };
 }
