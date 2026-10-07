@@ -121,18 +121,40 @@ Environment: created from the BASE 29.0 profile, then installed from the DemoPor
 Next (superseded): run the welcome wizard to create demo data, record the flow with Page Scripting (setup step 4),
 then run A, B and C again.
 
-## Results
+10. **The real action shape** (from the user's recording `recordings/real-iban-new.yml`): `invoke`
+    with `target: [{page, runtimeRef}, {action: Control_New}]` and `invokeType: New`. Actions are
+    named by **control name**, not caption; the caption is only in the description. Recordings also
+    contain `focus` steps between fields.
 
-Fill in after running:
+## Results (2026-10-07, env `b291025e…`, BASE BC 29.0, Banking 29.0 + activation app, no demo data)
+
+Scenario: V1's IBAN auto-fill demo (failed in V1). `recordings/real-iban-new-checked.yml` is the
+user's BC recording plus two `validate` steps (City = UTRECHT, SWIFT Code = RABONL2UXXX).
 
 | Exp | Run | Steps ok | Cursor found | Notes |
 |---|---|---|---|---|
-| A | 1 | | – | |
-| A | 2 | | – | |
-| A | 3 | | – | |
-| B | 1 | | | |
-| C | whole | | – | |
-| C | per-step | | | |
+| A | 1 | 10/10 | – | auto-fill validated |
+| A | 2 | 10/10 | – | auto-fill validated |
+| A | 3 | 10/10 | – | auto-fill validated |
+| B | 1 | 10/10 | 5/6 | 2 s hold per step; 37 s video at 1920x1080; IBAN (masked field) gets no cursor |
+| C | V1 format | 0 real | – | V1's invented step shape replays as silent no-ops |
+| C | real format, hand-written | 9/11 | – | navigate/filter/invoke row/input/validate work; guessed action shape didn't |
 
-**Decision:** go / no-go for the `create video` tag, and which parts of V1 to port
-(`narrator.ts`, `step-audio.ts`, `subtitle-gen.ts`, `composer.ts`, `cursor.ts`).
+What the video shows: Role Center → Bank Accounts → New → card → IBAN → Banking fills Name,
+Address, Post Code, City, Country, SWIFT. Polish needed: trim the "Getting ready" screen (V1's
+composer does this), close teaching tips ("About bank accounts") and notification bars before the
+demo, cursor for masked fields.
+
+**Decision: go** for the `create video` tag. BC's engine executes the steps; our code only adds the
+cursor, pacing, narration and composition. Requirements this puts on V2:
+
+- The generate stage must emit BC's real recording format: AL object page names, control names for
+  actions/repeaters, `page-shown` + `runtimeId`/`runtimeRef`, and `validate` steps that prove each
+  demo outcome. It can learn exact control names from the AL source; a recording made once per flow
+  type is the reference for shapes.
+- The replay gate is a whole-mode run with `validate` steps; the engine's own success flag is not
+  enough without them (finding 4).
+- Environment prep before recording: close the Continia demo welcome wizard, teaching tips and
+  notification bars; make optional dialogs optional (BC supports optional pages).
+- Port from V1: `narrator.ts`, `step-audio.ts`, `subtitle-gen.ts`, `composer.ts` (and `cursor.ts`,
+  already ported here).

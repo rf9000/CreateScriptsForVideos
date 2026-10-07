@@ -1,0 +1,72 @@
+# real-iban-new.yml (recorded by the user in BC) plus validate steps for the auto-filled fields.
+name: baselinerecording
+description: Test recording
+telemetryId: 46d1a237-2583-4626-9e01-6c9b2298741e
+start:
+  profile: BUSINESS MANAGER
+steps:
+  - type: navigate
+    target:
+      - page: Business Manager Role Center
+      - action: Bank Accounts
+    description: Navigate to <caption>Bank Accounts</caption>
+  - type: page-shown
+    source:
+      page: Bank Account List
+    modal: false
+    runtimeId: bca
+    description: Page <caption>Bank Accounts</caption> was shown.
+  - type: invoke
+    target:
+      - page: Bank Account List
+        runtimeRef: bca
+      - action: Control_New
+    invokeType: New
+    description: Invoke <operation>Create new</operation> on <caption>New</caption>
+  - type: page-shown
+    source:
+      page: Bank Account Card
+    modal: false
+    runtimeId: bhi
+    description: Page <caption>New - Bank Account Card</caption> was shown.
+  - type: focus
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: No.
+    description: Focus <caption>No.</caption>
+  - type: focus
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: Name
+    description: Focus <caption>Name</caption>
+  - type: input
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: IBAN
+    value: NL85RABO0347427693
+    description: Input <value>NL85RABO0347427693</value> into <caption>IBAN</caption>
+  - type: focus
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: Bank Statement Import Format
+    description: Focus <caption>Bank Statement Import Format</caption>
+  - type: validate
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: City
+    operation: =
+    value: UTRECHT
+    description: Validate <caption>City</caption> <operation>is</operation> <value>UTRECHT</value>
+  - type: validate
+    target:
+      - page: Bank Account Card
+        runtimeRef: bhi
+      - field: SWIFT Code
+    operation: =
+    value: RABONL2UXXX
+    description: Validate <caption>SWIFT Code</caption> <operation>is</operation> <value>RABONL2UXXX</value>

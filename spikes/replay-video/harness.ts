@@ -223,15 +223,22 @@ async function firstVisible(candidates: Locator[]): Promise<Locator | undefined>
 async function cursorTarget(frame: Frame, step: Step): Promise<Locator | undefined> {
   const dialog = frame.locator('[role=dialog]:visible').last();
   const scopes = (await dialog.count()) > 0 ? [dialog, frame.locator('body')] : [frame.locator('body')];
-  const field = step.target?.find((t) => t.field)?.field;
-  const action = step.caption ?? step.target?.find((t) => t.action)?.action;
+  // Real recordings name controls internally (action: Control_New); the visible caption
+  // is in the description (<caption>New</caption>), so prefer that for finding the element.
+  const shown = typeof step.description === 'string'
+    ? /<caption>([^<]+)<\/caption>/.exec(step.description)?.[1]
+    : undefined;
+  const field = step.target?.find((t) => t.field) ? (shown ?? step.target?.find((t) => t.field)?.field) : undefined;
+  const action = step.caption ?? (step.target?.find((t) => t.action) ? (shown ?? step.target?.find((t) => t.action)?.action) : undefined);
 
   for (const scope of scopes) {
-    if (step.type === 'input' && field) {
+    if ((step.type === 'input' || step.type === 'focus') && field) {
       const hit = await firstVisible([
         scope.getByRole('textbox', { name: field, exact: true }),
         scope.getByRole('combobox', { name: field, exact: true }),
         scope.getByRole('checkbox', { name: field, exact: true }),
+        // Masked fields (IBAN, account numbers) are password inputs with no textbox role.
+        scope.getByLabel(field, { exact: true }),
         scope.locator(`[controlname="${field}"] input`),
       ]);
       if (hit) return hit;
@@ -276,7 +283,7 @@ type StepLog = {
   replayed?: number;
   error?: string;
   warnings?: boolean;
-  cursor: 'found' | 'missing' | 'off';
+  cursor: 'found' | 'missing' | 'off' | 'n/a';
   ms: number;
 };
 
@@ -339,10 +346,17 @@ try {
   } else {
     for (const [index, step] of recording.steps.entries()) {
       const t0 = Date.now();
-      const entry: StepLog = { index, step: describe(step), cursor: useCursor ? 'missing' : 'off', ms: 0 };
+      // Steps the viewer doesn't click: no cursor expected.
+      const passive = ['page-shown', 'validate', 'wait'].includes(step.type);
+      const entry: StepLog = {
+        index,
+        step: describe(step),
+        cursor: !useCursor ? 'off' : passive ? 'n/a' : 'missing',
+        ms: 0,
+      };
       const frame = await awaitFrame(page);
 
-      if (useCursor) {
+      if (useCursor && !passive) {
         const target = await cursorTarget(frame, step).catch(() => undefined);
         const box = target ? await target.boundingBox().catch(() => null) : null;
         if (box) {
@@ -379,6 +393,7 @@ try {
     summary['steps'] = stepLogs;
     summary['passed'] = stepLogs.filter((s) => !s.error).length;
     summary['cursorFound'] = stepLogs.filter((s) => s.cursor === 'found').length;
+    summary['cursorExpected'] = stepLogs.filter((s) => s.cursor === 'found' || s.cursor === 'missing').length;
     summary['total'] = recording.steps.length;
   }
 
