@@ -166,6 +166,28 @@ describe("loadConfig", () => {
       expect(config.outputRetentionDays).toBe(14);
     });
 
+    it("defaults the video settings", () => {
+      const config = loadConfig(validEnv);
+      expect(config.createVideoTag).toBe("create video");
+      expect(config.openaiApiKey).toBe("");
+      expect(config.videoLocale).toBe("en-US");
+      expect(config.videoHeaded).toBe(false);
+    });
+
+    it("reads the video settings", () => {
+      const config = loadConfig({
+        ...validEnv,
+        CREATE_VIDEO_TAG: "record video",
+        OPENAI_API_KEY: "sk-test",
+        VIDEO_LOCALE: "da-DK",
+        VIDEO_HEADED: "true",
+      });
+      expect(config.createVideoTag).toBe("record video");
+      expect(config.openaiApiKey).toBe("sk-test");
+      expect(config.videoLocale).toBe("da-DK");
+      expect(config.videoHeaded).toBe(true);
+    });
+
     it("reads a custom OUTPUT_RETENTION_DAYS", () => {
       const config = loadConfig({ ...validEnv, OUTPUT_RETENTION_DAYS: "0" });
       expect(config.outputRetentionDays).toBe(0);

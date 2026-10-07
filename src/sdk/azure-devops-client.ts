@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  ItemMode,
   WorkItemResponse,
   WiqlQueryResult,
 } from '../types/index.ts';
@@ -149,12 +150,23 @@ export function wiqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+/** Which tag an item carries. Video wins when both are present (it includes the script). */
+export function itemMode(config: AppConfig, item: WorkItemResponse): ItemMode | undefined {
+  const tags = String(item.fields['System.Tags'] ?? '')
+    .split(';')
+    .map((t) => t.trim().toLowerCase());
+  if (tags.includes(config.createVideoTag.toLowerCase())) return 'video';
+  if (tags.includes(config.createScriptTag.toLowerCase())) return 'script';
+  return undefined;
+}
+
 export async function queryTaggedWorkItems(
   config: AppConfig,
 ): Promise<WorkItemResponse[]> {
   let wiql =
     `SELECT [System.Id] FROM workitems ` +
-    `WHERE [System.Tags] CONTAINS ${wiqlString(config.createScriptTag)}`;
+    `WHERE ([System.Tags] CONTAINS ${wiqlString(config.createScriptTag)}` +
+    ` OR [System.Tags] CONTAINS ${wiqlString(config.createVideoTag)})`;
   // Area path is how work items are classified under a product (e.g.
   // "Continia Software\Continia Banking") — UNDER matches the node and all
   // descendants. This is the real scope signal; Git artifact links are absent.
@@ -164,7 +176,6 @@ export async function queryTaggedWorkItems(
   const candidateIds = await queryWorkItems(config, wiql);
   if (candidateIds.length === 0) return [];
 
-  const tagLower = config.createScriptTag.toLowerCase();
   const tagged: WorkItemResponse[] = [];
   const chunkSize = 200;
 
@@ -176,10 +187,7 @@ export async function queryTaggedWorkItems(
       path,
     );
     for (const item of data.value ?? []) {
-      const tags = String(item.fields['System.Tags'] ?? '');
-      if (tags.split(';').some((t) => t.trim().toLowerCase() === tagLower)) {
-        tagged.push(item);
-      }
+      if (itemMode(config, item)) tagged.push(item);
     }
   }
 

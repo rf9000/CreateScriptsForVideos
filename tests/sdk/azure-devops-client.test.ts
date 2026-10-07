@@ -6,6 +6,7 @@ import {
   adoFetchWithRetry,
   queryWorkItems,
   queryTaggedWorkItems,
+  itemMode,
   getWorkItem,
   getWorkItemsBatch,
   getWorkItemComments,
@@ -28,6 +29,10 @@ function mockConfig(): AppConfig {
     dryRun: false,
     areaPath: '',
     createScriptTag: 'create script',
+    createVideoTag: 'create video',
+    openaiApiKey: '',
+    videoLocale: 'en-US',
+    videoHeaded: false,
     continiaBankingPath: './continia-banking',
     continiaApiToken: '',
     anthropicApiKey: '',
@@ -408,6 +413,33 @@ describe('queryTaggedWorkItems', () => {
     const body = JSON.parse((mockFn.mock.calls[0]![1] as RequestInit).body as string) as { query: string };
     expect(body.query).toContain("CONTAINS 'it''s'");
     expect(body.query).toContain("UNDER 'O''Brien'");
+  });
+
+  test('queries both tags and keeps items with either exact tag', async () => {
+    setSequentialMockFetch(
+      { body: { workItems: [{ id: 1, url: 'u1' }, { id: 2, url: 'u2' }, { id: 3, url: 'u3' }] } },
+      {
+        body: {
+          value: [
+            { id: 1, rev: 1, url: 'u1', fields: { 'System.Tags': 'create script' } },
+            { id: 2, rev: 1, url: 'u2', fields: { 'System.Tags': 'foo; create video' } },
+            { id: 3, rev: 1, url: 'u3', fields: { 'System.Tags': 'create videos' } },
+          ],
+        },
+      },
+    );
+    const items = await queryTaggedWorkItems(mockConfig());
+    expect(items.map((i) => i.id)).toEqual([1, 2]);
+    const body = JSON.parse((mockFn.mock.calls[0]![1] as RequestInit).body as string) as { query: string };
+    expect(body.query).toContain("([System.Tags] CONTAINS 'create script' OR [System.Tags] CONTAINS 'create video')");
+  });
+
+  test('itemMode: video wins when both tags are present', () => {
+    const item = (tags: string) => ({ id: 1, rev: 1, url: 'u', fields: { 'System.Tags': tags } });
+    expect(itemMode(mockConfig(), item('create script'))).toBe('script');
+    expect(itemMode(mockConfig(), item('Create Video'))).toBe('video');
+    expect(itemMode(mockConfig(), item('create script; create video'))).toBe('video');
+    expect(itemMode(mockConfig(), item('other'))).toBeUndefined();
   });
 
   test('omits the AreaPath clause when areaPath is empty', async () => {

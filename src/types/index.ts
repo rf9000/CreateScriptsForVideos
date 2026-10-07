@@ -10,6 +10,14 @@ export interface AppConfig {
   areaPath: string;
   /** Work-item tag that opts an item into script generation. */
   createScriptTag: string;
+  /** Work-item tag that opts an item into script generation plus a recorded video. */
+  createVideoTag: string;
+  /** OpenAI key for narration (TTS). Required only when a video item runs. */
+  openaiApiKey: string;
+  /** Narration locale, e.g. en-US or da-DK (voice and speed per locale). */
+  videoLocale: string;
+  /** Show the browser while recording (debugging). */
+  videoHeaded: boolean;
   /** Path to the read-only continia-banking clone (LSP navigation root). */
   continiaBankingPath: string;
   /** API token for continia.exe (passed as the global --token option). */
@@ -117,3 +125,6 @@ export interface ScriptResult {
   /** Per-stage usage, in run order. */
   stages?: StageUsage[];
 }
+
+/** What a tagged item asks for. `video` is a superset of `script`. */
+export type ItemMode = 'script' | 'video';
