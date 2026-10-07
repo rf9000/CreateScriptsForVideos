@@ -77,6 +77,8 @@ function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
     addComment: mock(async () => {}),
     removeTag: mock(async () => {}),
     report: mock(() => {}),
+    readVideo: mock(() => new Uint8Array([1, 2])),
+    fileSize: mock(() => 1000),
     ...overrides,
   };
 }
@@ -373,5 +375,54 @@ describe('processItem — failures around the pipeline', () => {
     await processItem(mockConfig(), mockWorkItem(), deps, { resume: true });
     const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
     expect(call[2]).toEqual({ resume: true });
+  });
+});
+
+describe('processItem — video items', () => {
+  const videoItem = () =>
+    mockWorkItem({ fields: { ...mockWorkItem().fields, 'System.Tags': 'create video' } });
+
+  test('runs the pipeline in video mode and attaches the mp4', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async () => ({ ...successResult, video: { ok: true, path: '/out/42/demo.mp4' } })),
+    });
+    await processItem(mockConfig(), videoItem(), deps);
+    expect((deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]![2]).toEqual({ mode: 'video' });
+    const uploads = (deps.uploadAttachment as ReturnType<typeof mock>).mock.calls.map((c) => c[1]);
+    expect(uploads).toEqual(['recording-script-42.md', 'demo-video-42.mp4']);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('demo-video-42.mp4');
+    expect(deps.removeTag).toHaveBeenCalledWith(expect.anything(), 42, 'create video');
+  });
+
+  test('a failed video is explained in the comment; script still attached', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async () => ({ ...successResult, video: { ok: false, error: 'recording failed at step 4: dialog' } })),
+    });
+    const result = await processItem(mockConfig(), videoItem(), deps);
+    expect(result.processed).toBe(true);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('No video was attached');
+    expect(html).toContain('recording failed at step 4: dialog');
+  });
+
+  test('an mp4 over 130 MB is not uploaded', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async () => ({ ...successResult, video: { ok: true, path: '/out/42/demo.mp4' } })),
+      fileSize: mock(() => 140 * 1024 * 1024),
+    });
+    await processItem(mockConfig(), videoItem(), deps);
+    expect((deps.uploadAttachment as ReturnType<typeof mock>).mock.calls).toHaveLength(1);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('too large to attach');
+    expect(html).toContain('/out/42/demo.mp4');
+  });
+
+  test('an item with both tags has both removed', async () => {
+    const deps = makeDeps();
+    const item = mockWorkItem({ fields: { ...mockWorkItem().fields, 'System.Tags': 'create script; create video' } });
+    await processItem(mockConfig(), item, deps);
+    const removed = (deps.removeTag as ReturnType<typeof mock>).mock.calls.map((c) => c[2]);
+    expect(removed.sort()).toEqual(['create script', 'create video']);
   });
 });

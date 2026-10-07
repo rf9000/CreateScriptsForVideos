@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, statSync } from 'fs';
 import type {
   AppConfig,
   WorkItemResponse,
@@ -35,6 +35,8 @@ export interface ProcessorDeps {
   removeTag: (config: AppConfig, workItemId: number, tag: string) => Promise<void>;
   /** Human-facing terminal output (used for dry-run reporting). */
   report: (text: string) => void;
+  readVideo: (path: string) => Uint8Array<ArrayBuffer>;
+  fileSize: (path: string) => number;
 }
 
 const defaultDeps: ProcessorDeps = {
@@ -46,6 +48,8 @@ const defaultDeps: ProcessorDeps = {
   addComment: sdk.addWorkItemComment,
   removeTag: sdk.removeTagFromWorkItem,
   report: (text) => console.log(text),
+  readVideo: (path) => new Uint8Array(readFileSync(path)),
+  fileSize: (path) => statSync(path).size,
 };
 
 function log(message: string): void {
@@ -81,7 +85,10 @@ export function isBotComment(text: string): boolean {
 const botFooter = `<p><em>Posted automatically by the create-scripts pipeline</em> <code>${BOT_COMMENT_MARKER}</code></p>`;
 
 // ADO work-item comments render HTML, not Markdown — build HTML directly.
-function buildEnvComment(result: ScriptResult, fileName: string): string {
+/** ADO's default work-item attachment size limit. */
+const MAX_ATTACHMENT_BYTES = 130 * 1024 * 1024;
+
+function buildEnvComment(result: ScriptResult, fileName: string, videoNote = ''): string {
   const env = result.env;
   const feature = escapeHtml(result.feature ?? 'this feature');
   const url = env?.url ?? '';
@@ -104,10 +111,9 @@ function buildEnvComment(result: ScriptResult, fileName: string): string {
     for (const g of result.gaps) lines.push(`<li>${escapeHtml(g)}</li>`);
     lines.push('</ul>');
   }
-  lines.push(
-    `<p>The recording script is attached to this work item as <code>${escapeHtml(fileName)}</code>.</p>`,
-    botFooter,
-  );
+  lines.push(`<p>The recording script is attached to this work item as <code>${escapeHtml(fileName)}</code>.</p>`);
+  if (videoNote) lines.push(videoNote);
+  lines.push(botFooter);
   return lines.join('\n');
 }
 
@@ -141,6 +147,7 @@ export async function processItem(
   options: PipelineOptions = {},
 ): Promise<ItemProcessResult> {
   const title = String(item.fields['System.Title'] ?? '(untitled)');
+  const mode = options.mode ?? sdk.itemMode(config, item) ?? 'script';
   log(`Processing item #${item.id}: ${title}`);
 
   // Set once the pipeline starts. Before that nothing was spent and nothing was
@@ -168,7 +175,7 @@ export async function processItem(
 
     log(`  Item #${item.id}: Running pipeline...`);
     attempted = true;
-    result = await deps.runPipeline(config, context, options);
+    result = await deps.runPipeline(config, context, { ...options, ...(mode === 'video' ? { mode } : {}) });
     const costUsd = result.costUsd;
     log(`  Item #${item.id}: Agent cost $${(costUsd ?? 0).toFixed(4)}`);
 
@@ -198,7 +205,21 @@ export async function processItem(
       attachment.url,
       `Recording script for ${result.feature ?? title}`,
     );
-    await deps.addComment(config, item.id, buildEnvComment(result, fileName));
+    let videoNote = '';
+    if (result.video?.ok && result.video.path) {
+      const size = deps.fileSize(result.video.path);
+      if (size > MAX_ATTACHMENT_BYTES) {
+        videoNote = `<p>The demo video is too large to attach (${Math.round(size / 1048576)} MB). It is on the server at <code>${escapeHtml(result.video.path)}</code>.</p>`;
+      } else {
+        const videoName = `demo-video-${item.id}.mp4`;
+        const video = await deps.uploadAttachment(config, videoName, deps.readVideo(result.video.path));
+        await deps.linkAttachment(config, item.id, video.url, `Demo video for ${result.feature ?? title}`);
+        videoNote = `<p>The demo video is attached as <code>${escapeHtml(videoName)}</code>. It is a draft: watch it before sharing.</p>`;
+      }
+    } else if (result.video && !result.video.ok) {
+      videoNote = `<p><strong>No video was attached:</strong> ${escapeHtml(result.video.error ?? 'unknown error')}</p>`;
+    }
+    await deps.addComment(config, item.id, buildEnvComment(result, fileName, videoNote));
 
     log(`  Item #${item.id}: Script attached and environment details posted`);
     return { itemId: item.id, processed: true, costUsd };
@@ -234,7 +255,11 @@ export async function processItem(
     // means the item may be retried on the next cycle.
     if (attempted && !config.dryRun) {
       try {
-        await deps.removeTag(config, item.id, config.createScriptTag);
+        const tags = String(item.fields['System.Tags'] ?? '').split(';').map((t) => t.trim().toLowerCase());
+        const optIns = [config.createScriptTag, config.createVideoTag].filter((t) => tags.includes(t.toLowerCase()));
+        for (const tag of optIns.length ? optIns : [config.createScriptTag]) {
+          await deps.removeTag(config, item.id, tag);
+        }
       } catch (err) {
         log(`  Item #${item.id}: Failed to remove tag — ${err}`);
       }

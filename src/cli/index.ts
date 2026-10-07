@@ -20,6 +20,7 @@ Commands:
 Options:
   --dry-run        Skip Azure DevOps writes. The pipeline still runs at full cost: it provisions a BC environment and publishes apps.
   --resume         (test-item) Continue from the item's saved pipeline state instead of starting over.
+  --video          (test-item) Also record the demo video, as if the item were tagged create video.
 
 Environment variables:
   AZURE_DEVOPS_PAT          Azure DevOps personal access token (required)
@@ -27,6 +28,10 @@ Environment variables:
   AZURE_DEVOPS_PROJECT      Azure DevOps project name (required)
   AZURE_DEVOPS_AREA_PATH    Area path to scope work items (WIQL UNDER; optional)
   CREATE_SCRIPT_TAG         Tag that opts items in (default: "create script")
+  CREATE_VIDEO_TAG          Tag that also records a demo video (default: "create video")
+  OPENAI_API_KEY            OpenAI key for video narration (required for video items)
+  VIDEO_LOCALE              Narration locale (default: en-US)
+  VIDEO_HEADED              Show the browser while recording (default: false)
   CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
   CONTINIA_API_TOKEN        DemoPortal API token for the continia CLI
   CONTINIA_CLI_PATH         continia CLI path or command (default: continia)
@@ -81,7 +86,7 @@ switch (command) {
   case 'test-item': {
     const itemIdArg = process.argv[3];
     if (!itemIdArg || isNaN(Number(itemIdArg))) {
-      console.error('Usage: create-scripts test-item <work-item-id> [--resume]');
+      console.error('Usage: create-scripts test-item <work-item-id> [--resume] [--video]');
       process.exitCode = 1;
       break;
     }
@@ -93,6 +98,7 @@ switch (command) {
     const item = await getWorkItem(config, Number(itemIdArg));
     const result = await processItem(config, item, undefined, {
       resume: process.argv.includes('--resume'),
+      ...(process.argv.includes('--video') ? { mode: 'video' as const } : {}),
     });
     console.log(
       `\nDone: ${result.processed ? 'processed' : 'failed'}` +
