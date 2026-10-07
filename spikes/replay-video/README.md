@@ -145,6 +145,31 @@ Address, Post Code, City, Country, SWIFT. Polish needed: trim the "Getting ready
 composer does this), close teaching tips ("About bank accounts") and notification bars before the
 demo, cursor for masked fields.
 
+### Video quality (visibility), first pass
+
+Without staging, the IBAN step was weak on video: the field sat in the collapsed Transfer FastTab,
+BC's engine expanded it only as part of the input, it landed at the bottom edge, the value appeared
+without typing, and the cursor stayed on Name. Execution was still correct.
+
+With staging (harness default; `--no-stage` turns it off), before each step the harness: finds the
+target; if it's a field that isn't rendered, expands collapsed FastTabs
+(`span[role=button].ms-nav-columns-caption[aria-expanded="false"]`) until it is; scrolls it to the
+center; glides the cursor; and for text fields types the value with real keystrokes (`--type-ms`),
+after which BC's engine commits the same value and fires the triggers. Each step logs
+`before`/`after` visibility (`in-view`, `edge`, `off-screen`, `not-found`).
+
+Result: cursor 6/6, every target `in-view` except IBAN (`edge`: it's the last field on the card),
+and one frame shows IBAN plus all auto-filled fields. Still to do:
+- reveal masked values (IBAN shows dots; the field's eye icon reveals it),
+- expand only the FastTab that holds the field (the generator knows the group from AL); the
+  try-in-order fallback also opened Posting,
+- port V1's scroll knowledge (`scrollContainerToReveal`: vertical and horizontal scroll of
+  `.ms-nav-scrollable` / `.freeze-pane-scrollbar` with grid scroll sync; "Show more"; centering).
+  It failed in V1 because execution depended on it; as a cosmetic staging layer a miss only costs
+  framing, never a step,
+- an automated quality gate: a vision model reviews the after-frame of each step against the
+  script's "You'll see" line (V1 found vision good at verifying, bad at aiming).
+
 **Decision: go** for the `create video` tag. BC's engine executes the steps; our code only adds the
 cursor, pacing, narration and composition. Requirements this puts on V2:
 

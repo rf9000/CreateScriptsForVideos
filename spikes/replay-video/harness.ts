@@ -9,7 +9,7 @@
  *                     would pace steps to narration)
  *
  * Usage: node harness.ts --env <envId> --recording recordings/x.yml --mode per-step [--headed]
- *        [--hold-ms 1500] [--keep-start] [--no-cursor] [--continue] [--page <pageId>] [--out dir]
+ *        [--hold-ms 1500] [--keep-start] [--no-cursor] [--no-stage] [--type-ms 70] [--continue] [--page <pageId>] [--out dir]
  * Env:   CONTINIA_API_TOKEN (from the repo .env) for --env; or BC_URL, BC_USER, BC_PASS instead
  */
 import { chromium } from 'playwright';
@@ -61,6 +61,8 @@ const headed = flag('headed');
 const keepStart = flag('keep-start');
 const useCursor = !flag('no-cursor');
 const continueOnError = flag('continue');
+const stage = !flag('no-stage');
+const typeMs = Number(opt('type-ms', '70'));
 // Connection: either --env <envId> (URL and login looked up with the continia CLI)
 // or BC_URL / BC_USER / BC_PASS set explicitly.
 const envId = opt('env') ?? process.env['BC_ENV_ID'];
@@ -276,6 +278,60 @@ function describe(step: Step): string {
   return step.type;
 }
 
+// ---------- staging: make the step's target visible before BC's engine runs it ----------
+type Visibility = 'in-view' | 'edge' | 'off-screen' | 'not-found';
+const EDGE_MARGIN = 80;
+
+async function visibility(target: Locator | undefined): Promise<Visibility> {
+  if (!target) return 'not-found';
+  const box = await target.boundingBox().catch(() => null);
+  if (!box) return 'not-found';
+  const inside = box.y >= 0 && box.y + box.height <= VIEWPORT.height && box.x >= 0 && box.x + box.width <= VIEWPORT.width;
+  if (!inside) return 'off-screen';
+  const comfortable = box.y >= EDGE_MARGIN && box.y + box.height <= VIEWPORT.height - EDGE_MARGIN;
+  return comfortable ? 'in-view' : 'edge';
+}
+
+/** Find the target; if it's a field that isn't rendered, expand collapsed FastTabs until it is; center it. */
+async function stageTarget(page: Page, frame: Frame, step: Step, entry: StepLog): Promise<Locator | undefined> {
+  let target = await cursorTarget(frame, step).catch(() => undefined);
+  const hasField = step.target?.some((t) => t.field);
+  if (!target && hasField) {
+    // Collapsed FastTabs don't render their fields at all, so the field only appears after expanding.
+    const headers = frame.locator('span[role=button].ms-nav-columns-caption[aria-expanded="false"]');
+    const captions = (await headers.allTextContents()).map((t) => t.trim()).filter(Boolean);
+    entry.expanded = [];
+    for (const caption of captions) {
+      await frame.locator('span[role=button].ms-nav-columns-caption[aria-expanded="false"]', { hasText: caption }).first().click();
+      entry.expanded.push(caption);
+      await awaitFrame(page).catch(() => {});
+      target = await cursorTarget(frame, step).catch(() => undefined);
+      if (target) break;
+    }
+  }
+  if (target) {
+    await target.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'smooth' })).catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  return target;
+}
+
+/** Type the value visibly; BC's engine commits the same value right after, which fires the triggers. */
+async function typeVisibly(target: Locator, step: Step): Promise<boolean> {
+  if (step.type !== 'input' || typeof step.value !== 'string' || step.value.startsWith('=')) return false;
+  const kind = await target.evaluate((el) => {
+    const input = el as HTMLInputElement;
+    return el.tagName === 'INPUT' && (input.type === 'text' || input.type === 'password') && el.getAttribute('role') !== 'combobox'
+      ? 'text'
+      : 'other';
+  }).catch(() => 'other');
+  if (kind !== 'text') return false;
+  await target.click();
+  await target.fill('');
+  await target.pressSequentially(step.value, { delay: typeMs });
+  return true;
+}
+
 // ---------- run ----------
 type StepLog = {
   index: number;
@@ -284,6 +340,11 @@ type StepLog = {
   error?: string;
   warnings?: boolean;
   cursor: 'found' | 'missing' | 'off' | 'n/a';
+  /** Where the step's target was just before it ran, and just after (video quality check). */
+  visibleBefore?: Visibility;
+  visibleAfter?: Visibility;
+  expanded?: string[];
+  typed?: boolean;
   ms: number;
 };
 
@@ -356,8 +417,12 @@ try {
       };
       const frame = await awaitFrame(page);
 
+      let target: Locator | undefined;
+      if (!passive) {
+        target = stage ? await stageTarget(page, frame, step, entry) : await cursorTarget(frame, step).catch(() => undefined);
+        entry.visibleBefore = await visibility(target);
+      }
       if (useCursor && !passive) {
-        const target = await cursorTarget(frame, step).catch(() => undefined);
         const box = target ? await target.boundingBox().catch(() => null) : null;
         if (box) {
           // boundingBox() is relative to the main viewport, so no iframe offset is needed.
@@ -365,6 +430,7 @@ try {
           entry.cursor = 'found';
         }
       }
+      if (stage && target) entry.typed = await typeVisibly(target, step).catch(() => false);
 
       const slice: Recording = {
         name: recording.name,
@@ -382,12 +448,21 @@ try {
         entry.error = `harness: ${String(err)}`;
       }
       await awaitFrame(page).catch(() => {});
+      if (!passive && step.type !== 'navigate' && step.type !== 'invoke') {
+        // Re-locate: the step may have re-rendered the page.
+        entry.visibleAfter = await visibility(await cursorTarget(await awaitFrame(page), step).catch(() => undefined));
+      }
       await page.screenshot({ path: join(outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
       await page.waitForTimeout(holdMs);
       entry.ms = Date.now() - t0;
       stepLogs.push(entry);
       log(`#${index} ${entry.step}: ${entry.error ? `FAIL — ${entry.error}` : `ok (${entry.replayed ?? '?'} replayed)`}` +
-        ` | cursor ${entry.cursor} | ${entry.ms} ms`);
+        ` | cursor ${entry.cursor}` +
+        (entry.visibleBefore ? ` | before ${entry.visibleBefore}` : '') +
+        (entry.visibleAfter ? ` | after ${entry.visibleAfter}` : '') +
+        (entry.expanded?.length ? ` | expanded ${entry.expanded.join(', ')}` : '') +
+        (entry.typed ? ' | typed' : '') +
+        ` | ${entry.ms} ms`);
       if (entry.error && !continueOnError) break;
     }
     summary['steps'] = stepLogs;
