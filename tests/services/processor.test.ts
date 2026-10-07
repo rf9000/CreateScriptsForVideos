@@ -10,8 +10,6 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     project: 'my-project',
     pat: 'test-pat-token',
     pollIntervalMinutes: 5,
-    claudeModel: 'claude-sonnet-4-6',
-    promptPath: '.claude/commands/create-script.md',
     dryRun: false,
     areaPath: '',
     createScriptTag: 'create script',
@@ -21,9 +19,16 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     workspaceOutputDir: './output',
     pteOutputDir: './output',
     lspPluginPath: '',
-    agentMaxTurns: 120,
     outputRetentionDays: 14,
     watchConcurrency: 1,
+    continiaCliPath: 'continia',
+    envProfileId: 'profile-1',
+    envReadyTimeoutMinutes: 15,
+    stages: {
+      generate: { model: 'claude-sonnet-4-6', maxTurns: 150, timeoutMinutes: 60 },
+      validate: { model: 'claude-sonnet-4-6', maxTurns: 60, timeoutMinutes: 30 },
+      deploy: { model: 'claude-sonnet-4-6', maxTurns: 80, timeoutMinutes: 45 },
+    },
     ...overrides,
   };
 }
@@ -60,7 +65,7 @@ const successResult: ScriptResult = {
 function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
   return {
     fetchComments: mock(async () => ['Use DK localization']),
-    runOrchestrator: mock(async () => successResult),
+    runPipeline: mock(async () => successResult),
     readScript: mock(() => '# Recording Script\n\nStep 1...'),
     uploadAttachment: mock(async () => ({ id: 'att-1', url: 'https://att/att-1' })),
     linkAttachment: mock(async () => ({}) as WorkItemResponse),
@@ -76,7 +81,7 @@ describe('processItem — success', () => {
     const deps = makeDeps();
     await processItem(mockConfig(), mockWorkItem(), deps);
 
-    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
     const context = call[1] as { comments: string[]; itemTitle: string };
     expect(context.comments).toEqual(['Use DK localization']);
     expect(context.itemTitle).toBe('Demo merge rules');
@@ -125,7 +130,7 @@ describe('processItem — success', () => {
 
   test('renders gaps as an escaped HTML list', async () => {
     const deps = makeDeps({
-      runOrchestrator: mock(
+      runPipeline: mock(
         async (): Promise<ScriptResult> => ({
           ...successResult,
           gaps: ['Filter <Bank> not shown', 'Disable/Enable & flow omitted'],
@@ -170,7 +175,7 @@ describe('processItem — success', () => {
 describe('processItem — failure', () => {
   const failDeps = () =>
     makeDeps({
-      runOrchestrator: mock(
+      runPipeline: mock(
         async (): Promise<ScriptResult> => ({
           status: 'failed',
           errorMessage: 'environment would not start',
@@ -247,7 +252,7 @@ describe('processItem — brief hygiene', () => {
     });
     await processItem(mockConfig(), mockWorkItem(), deps);
 
-    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
     const context = call[1] as { comments: string[] };
     expect(context.comments).toEqual(['Use DK localization']);
   });
@@ -263,7 +268,7 @@ describe('processItem — brief hygiene', () => {
     });
     await processItem(mockConfig(), item, deps);
 
-    const call = (deps.runOrchestrator as ReturnType<typeof mock>).mock.calls[0]!;
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
     const context = call[1] as { itemDescription: string };
     expect(context.itemDescription).toBe('Show how to create\na merge rule.');
   });
@@ -277,7 +282,7 @@ describe('processItem — brief hygiene', () => {
 
   test('failure comments carry the marker too', async () => {
     const deps = makeDeps({
-      runOrchestrator: mock(async () => ({ status: 'failed', errorMessage: 'boom' }) as ScriptResult),
+      runPipeline: mock(async () => ({ status: 'failed', errorMessage: 'boom' }) as ScriptResult),
     });
     await processItem(mockConfig(), mockWorkItem(), deps);
     const commentCall = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]!;
@@ -288,7 +293,7 @@ describe('processItem — brief hygiene', () => {
 describe('failure comment env reporting', () => {
   test('failure comment includes provisioned env details when present', async () => {
     const deps = makeDeps({
-      runOrchestrator: mock(async () => ({
+      runPipeline: mock(async () => ({
         status: 'failed',
         errorMessage: 'compile failed',
         env: {
@@ -306,7 +311,7 @@ describe('failure comment env reporting', () => {
 
   test('env comment lists assumptions when present', async () => {
     const deps = makeDeps({
-      runOrchestrator: mock(async () => ({
+      runPipeline: mock(async () => ({
         ...successResult,
         assumptions: ['Assumed DK localization'],
       }) as ScriptResult),

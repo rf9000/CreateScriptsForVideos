@@ -25,8 +25,6 @@ function mockConfig(): AppConfig {
     project: 'my-project',
     pat: 'test-pat-token',
     pollIntervalMinutes: 5,
-    claudeModel: 'claude-sonnet-4-6',
-    promptPath: './prompt.md',
     dryRun: false,
     areaPath: '',
     createScriptTag: 'create script',
@@ -36,9 +34,16 @@ function mockConfig(): AppConfig {
     workspaceOutputDir: './output',
     pteOutputDir: './output',
     lspPluginPath: '',
-    agentMaxTurns: 120,
     outputRetentionDays: 14,
     watchConcurrency: 1,
+    continiaCliPath: 'continia',
+    envProfileId: 'profile-1',
+    envReadyTimeoutMinutes: 15,
+    stages: {
+      generate: { model: 'claude-sonnet-4-6', maxTurns: 150, timeoutMinutes: 60 },
+      validate: { model: 'claude-sonnet-4-6', maxTurns: 60, timeoutMinutes: 30 },
+      deploy: { model: 'claude-sonnet-4-6', maxTurns: 80, timeoutMinutes: 45 },
+    },
   };
 }
 

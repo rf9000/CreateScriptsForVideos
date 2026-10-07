@@ -6,17 +6,18 @@ import type {
   ScriptResult,
 } from '../types/index.ts';
 import type { AttachmentRef } from '../sdk/azure-devops-client.ts';
-import type { OrchestratorContext } from './orchestrator-agent.ts';
+import type { WorkItemContext, PipelineOptions } from './pipeline.ts';
 
 import * as sdk from '../sdk/azure-devops-client.ts';
-import * as orchestrator from './orchestrator-agent.ts';
+import { runPipeline } from './pipeline.ts';
 import { htmlToText } from './html.ts';
 
 export interface ProcessorDeps {
   fetchComments: (config: AppConfig, workItemId: number) => Promise<string[]>;
-  runOrchestrator: (
+  runPipeline: (
     config: AppConfig,
-    context: OrchestratorContext,
+    context: WorkItemContext,
+    options: PipelineOptions,
   ) => Promise<ScriptResult>;
   readScript: (path: string) => string;
   uploadAttachment: (
@@ -38,7 +39,7 @@ export interface ProcessorDeps {
 
 const defaultDeps: ProcessorDeps = {
   fetchComments: sdk.getWorkItemComments,
-  runOrchestrator: orchestrator.runOrchestrator,
+  runPipeline: (config, context, options) => runPipeline(config, context, options),
   readScript: (path) => readFileSync(path, 'utf-8'),
   uploadAttachment: sdk.uploadAttachment,
   linkAttachment: sdk.linkAttachment,
@@ -137,6 +138,7 @@ export async function processItem(
   config: AppConfig,
   item: WorkItemResponse,
   deps: ProcessorDeps = defaultDeps,
+  options: PipelineOptions = {},
 ): Promise<ItemProcessResult> {
   const title = String(item.fields['System.Title'] ?? '(untitled)');
   log(`Processing item #${item.id}: ${title}`);
@@ -150,7 +152,7 @@ export async function processItem(
       .map((c) => htmlToText(c))
       .filter((c) => c.length > 0);
 
-    const context: OrchestratorContext = {
+    const context: WorkItemContext = {
       itemId: item.id,
       itemTitle: title,
       itemType: String(item.fields['System.WorkItemType'] ?? ''),
@@ -158,8 +160,8 @@ export async function processItem(
       comments,
     };
 
-    log(`  Item #${item.id}: Running orchestrator...`);
-    const result = await deps.runOrchestrator(config, context);
+    log(`  Item #${item.id}: Running pipeline...`);
+    const result = await deps.runPipeline(config, context, options);
     const costUsd = result.costUsd;
     log(`  Item #${item.id}: Agent cost $${(costUsd ?? 0).toFixed(4)}`);
 

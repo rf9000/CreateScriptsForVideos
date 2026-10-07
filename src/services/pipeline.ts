@@ -1,0 +1,310 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
+import { z } from 'zod';
+import type { AppConfig, EnvDetails, ScriptResult, StageUsage } from '../types/index.ts';
+import { runAgentStage, defaultAgentStageDeps } from './agent-stage.ts';
+import type { AgentStageDeps, StageRun } from './agent-stage.ts';
+import { createContiniaCli, waitForRunning } from './continia-cli.ts';
+import type { ContiniaCli } from './continia-cli.ts';
+
+/**
+ * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
+ * separate agent session; environment work (provision, activate, verify,
+ * credentials) is plain code against the continia CLI. Progress is saved after
+ * each step so a failed item can resume from the last good step.
+ */
+
+/** GUID of the "Continia Banking Internal Access" app the PTE depends on. */
+export const INTERNAL_ACCESS_APP_ID = '6e549e35-d1b2-4878-a37a-a736c22f35bf';
+/** GUID of the Continia Core Internal Activation App; Continia products need it on a fresh env. */
+export const ACTIVATION_APP_ID = 'c3755ece-dab0-4d16-987d-040661f18522';
+
+export interface WorkItemContext {
+  itemId: number;
+  itemTitle: string;
+  itemType: string;
+  itemDescription: string;
+  comments: string[];
+}
+
+export const generateOutputSchema = z.object({
+  status: z.enum(['success', 'failed']),
+  feature: z.string().describe('Short feature name, e.g. "Merge Rules"'),
+  needsBankingDemo: z
+    .boolean()
+    .describe('True if the demo relies on baseline data from the banking-demo app'),
+  assumptions: z.array(z.string()),
+  gaps: z.array(z.string()),
+  errorMessage: z.string().optional().describe('Required when status is failed'),
+});
+
+export const validateOutputSchema = z.object({
+  status: z.enum(['passed', 'blocked']),
+  blockers: z.array(z.string()).describe('Blockers still open after the fix attempts'),
+  warnings: z.array(z.string()),
+});
+
+export const deployOutputSchema = z.object({
+  status: z.enum(['success', 'failed']),
+  gaps: z.array(z.string()),
+  errorMessage: z.string().optional().describe('Required when status is failed'),
+});
+
+type GenerateOutput = z.infer<typeof generateOutputSchema>;
+type ValidateOutput = z.infer<typeof validateOutputSchema>;
+
+/** What is saved between steps. Never holds credentials. */
+export interface PipelineState {
+  generate?: GenerateOutput;
+  validate?: ValidateOutput;
+  envId?: string;
+  activated?: boolean;
+  deployGaps?: string[];
+}
+
+export interface PipelineDeps {
+  stageDeps: AgentStageDeps;
+  cli: (config: AppConfig) => ContiniaCli;
+  waitForRunning: typeof waitForRunning;
+  loadState: (path: string) => PipelineState | undefined;
+  saveState: (path: string, state: PipelineState) => void;
+  clearState: (path: string) => void;
+  fileExists: (path: string) => boolean;
+  readAppName: (ptePath: string) => string;
+}
+
+export const defaultPipelineDeps: PipelineDeps = {
+  stageDeps: defaultAgentStageDeps,
+  cli: (config) => createContiniaCli(config),
+  waitForRunning,
+  loadState: (path) =>
+    existsSync(path) ? (JSON.parse(readFileSync(path, 'utf-8')) as PipelineState) : undefined,
+  saveState: (path, state) => {
+    mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, JSON.stringify(state, null, 2));
+  },
+  clearState: (path) => rmSync(path, { force: true }),
+  fileExists: existsSync,
+  readAppName: (ptePath) => {
+    const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
+    if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
+    return app.name;
+  },
+};
+
+export interface ItemPaths {
+  scriptPath: string;
+  ptePath: string;
+  statePath: string;
+}
+
+export function itemPaths(config: AppConfig, itemId: number): ItemPaths {
+  const outDir = resolve(config.workspaceOutputDir, String(itemId));
+  return {
+    scriptPath: join(outDir, 'recording-script.md'),
+    ptePath: resolve(config.pteOutputDir, String(itemId)),
+    statePath: join(outDir, 'pipeline-state.json'),
+  };
+}
+
+function log(message: string): void {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  console.log(`[${ts}] ${message}`);
+}
+
+/** The work item as the agent's brief. */
+export function buildBrief(context: WorkItemContext): string {
+  const lines: string[] = [
+    `## Work Item #${context.itemId}`,
+    `**Type:** ${context.itemType}`,
+    `**Title:** ${context.itemTitle}`,
+  ];
+  if (context.itemDescription) {
+    lines.push('', '## Description', context.itemDescription);
+  }
+  if (context.comments.length > 0) {
+    lines.push('', '## Comments');
+    context.comments.forEach((comment, i) => {
+      lines.push('', `### Comment ${i + 1}`, comment);
+    });
+  }
+  return lines.join('\n');
+}
+
+function pathsBlock(config: AppConfig, paths: ItemPaths): string {
+  return [
+    '## Paths for this item',
+    `- continia-banking repo (read-only): ${resolve(config.continiaBankingPath)}`,
+    `- Recording script file: ${paths.scriptPath}`,
+    `- PTE folder (app.json goes directly here): ${paths.ptePath}`,
+    `- continia CLI: \`${config.continiaCliPath}\` (authenticate with \`--token "$CONTINIA_API_TOKEN"\`)`,
+  ].join('\n');
+}
+
+function envName(context: WorkItemContext): string {
+  return `Demo #${context.itemId} ${context.itemTitle}`.slice(0, 60).trim();
+}
+
+export interface PipelineOptions {
+  /** Continue from the saved state instead of starting over. */
+  resume?: boolean;
+}
+
+export async function runPipeline(
+  config: AppConfig,
+  context: WorkItemContext,
+  options: PipelineOptions = {},
+  deps: PipelineDeps = defaultPipelineDeps,
+): Promise<ScriptResult> {
+  const paths = itemPaths(config, context.itemId);
+  const stages: StageUsage[] = [];
+  const cli = deps.cli(config);
+
+  if (!options.resume) deps.clearState(paths.statePath);
+  const state: PipelineState = (options.resume && deps.loadState(paths.statePath)) || {};
+  const save = () => deps.saveState(paths.statePath, state);
+
+  const base = () => ({
+    scriptPath: paths.scriptPath,
+    ptePath: paths.ptePath,
+    feature: state.generate?.feature,
+    assumptions: state.generate?.assumptions ?? [],
+    gaps: [
+      ...(state.generate?.gaps ?? []),
+      ...(state.validate?.warnings ?? []),
+      ...(state.deployGaps ?? []),
+    ],
+    stages,
+    costUsd: stages.reduce((sum, s) => sum + s.costUsd, 0),
+  });
+
+  const failed = async (errorMessage: string): Promise<ScriptResult> => {
+    const env = state.envId ? await collectEnv(cli, state.envId).catch(() => undefined) : undefined;
+    return { ...base(), status: 'failed', errorMessage, ...(env ? { env } : {}) };
+  };
+
+  const record = <T>(run: StageRun<T>): run is Extract<StageRun<T>, { ok: true }> => {
+    stages.push(run.usage);
+    return run.ok;
+  };
+
+  if (!config.envProfileId) {
+    return failed('CONTINIA_ENV_PROFILE_ID is not configured; cannot provision an environment');
+  }
+
+  const brief = buildBrief(context);
+  const where = pathsBlock(config, paths);
+
+  // A. Generate: research, PTE, recording script.
+  if (!state.generate) {
+    const run = await runAgentStage(
+      config,
+      'generate',
+      ['invariants', 'generate'],
+      `${brief}\n\n${where}`,
+      generateOutputSchema,
+      deps.stageDeps,
+    );
+    if (!record(run)) return failed(run.error);
+    if (run.output.status === 'failed') {
+      return failed(run.output.errorMessage || 'generate stage failed without a message');
+    }
+    if (!deps.fileExists(paths.scriptPath)) return failed(`recording script not written to ${paths.scriptPath}`);
+    if (!deps.fileExists(join(paths.ptePath, 'app.json'))) return failed(`PTE app.json not written in ${paths.ptePath}`);
+    state.generate = run.output;
+    save();
+  }
+
+  // B. Validate: blocking gate; the stage fixes and re-validates on its own.
+  if (state.validate?.status !== 'passed') {
+    const run = await runAgentStage(
+      config,
+      'validate',
+      ['invariants', 'validate'],
+      `${brief}\n\n${where}`,
+      validateOutputSchema,
+      deps.stageDeps,
+    );
+    if (!record(run)) return failed(run.error);
+    state.validate = run.output;
+    save();
+    if (run.output.status === 'blocked') {
+      return failed(`demo data validation blocked: ${run.output.blockers.join('; ') || 'no details'}`);
+    }
+  }
+
+  try {
+    // C. Provision a fresh environment and wait for it.
+    if (!state.envId) {
+      log(`  Provisioning environment from profile ${config.envProfileId}...`);
+      state.envId = await cli.createEnvironment(envName(context), config.envProfileId);
+      save();
+    }
+    await deps.waitForRunning(cli, state.envId, config.envReadyTimeoutMinutes * 60_000);
+
+    // D. Activate: Continia products need the activation app before any deploy.
+    if (!state.activated) {
+      const install = await cli.installAppById(state.envId, ACTIVATION_APP_ID);
+      if (!install.installed) {
+        return failed(`activation app install failed (${install.reasonCode ?? 'no reason code'})`);
+      }
+      state.activated = true;
+      save();
+    }
+  } catch (err) {
+    return failed(`environment setup failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // E. Deploy: symbols, compile, publish, fix loop.
+  if (!state.deployGaps) {
+    const deployPrompt = [
+      brief,
+      where,
+      '## Environment',
+      `- Environment id: ${state.envId}`,
+      '- It is running and activated.',
+      `- Publish banking-demo first: ${state.generate.needsBankingDemo ? 'yes' : 'no'}`,
+    ].join('\n\n');
+    const run = await runAgentStage(
+      config,
+      'deploy',
+      ['invariants', 'deploy'],
+      deployPrompt,
+      deployOutputSchema,
+      deps.stageDeps,
+    );
+    if (!record(run)) return failed(run.error);
+    if (run.output.status === 'failed') {
+      return failed(run.output.errorMessage || 'deploy stage failed without a message');
+    }
+    state.deployGaps = run.output.gaps;
+    save();
+  }
+
+  // F. Verify the PTE is installed, then collect credentials.
+  try {
+    const appName = deps.readAppName(paths.ptePath);
+    const apps = await cli.listApps(state.envId);
+    if (!apps.some((app) => app.name === appName)) {
+      return failed(`deploy reported success but "${appName}" is not installed on ${state.envId}`);
+    }
+    const env = await collectEnv(cli, state.envId);
+    return { ...base(), status: 'success', env };
+  } catch (err) {
+    return failed(`verification failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Environment details for the work-item comment. */
+async function collectEnv(cli: ContiniaCli, envId: string): Promise<EnvDetails> {
+  const info = await cli.getEnvironment(envId);
+  const users = await cli.getUsers(envId);
+  const user = users.find((u) => u.password) ?? users[0];
+  return {
+    id: info.id,
+    name: info.name,
+    url: info.url,
+    username: user?.username ?? '',
+    password: user?.password ?? '',
+  };
+}

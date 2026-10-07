@@ -14,11 +14,12 @@ Usage:
 Commands:
   watch            Start the long-running watcher (polls every N minutes)
   run-once         Run a single poll cycle and exit
-  test-item <id>   Process a single work item (dry-run, no writes)
+  test-item <id>   Process a single work item (dry-run, no ADO writes)
   help             Show this help message
 
 Options:
-  --dry-run        Skip Azure DevOps writes. The agent still runs at full cost: it provisions a BC environment and publishes apps.
+  --dry-run        Skip Azure DevOps writes. The pipeline still runs at full cost: it provisions a BC environment and publishes apps.
+  --resume         (test-item) Continue from the item's saved pipeline state instead of starting over.
 
 Environment variables:
   AZURE_DEVOPS_PAT          Azure DevOps personal access token (required)
@@ -27,15 +28,23 @@ Environment variables:
   AZURE_DEVOPS_AREA_PATH    Area path to scope work items (WIQL UNDER; optional)
   CREATE_SCRIPT_TAG         Tag that opts items in (default: "create script")
   CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
+  CONTINIA_API_TOKEN        DemoPortal API token for the continia CLI
+  CONTINIA_CLI_PATH         continia CLI path or command (default: continia)
+  CONTINIA_ENV_PROFILE_ID   DemoPortal profile every fresh environment is created from (required)
+  ENV_READY_TIMEOUT_MINUTES Max wait for a new environment to reach Running (default: 15)
   ANTHROPIC_API_KEY         Anthropic API key (optional; empty = Claude Code OAuth)
   WORKSPACE_OUTPUT_DIR      Writable dir for the generated .md script (default: ./output)
   PTE_OUTPUT_DIR            Writable dir for the generated PTE (default: WORKSPACE_OUTPUT_DIR)
   LSP_PLUGIN_PATH           Local path to the LSP plugin loaded into the agent
   POLL_INTERVAL_MINUTES     Polling interval (default: 5)
   WATCH_CONCURRENCY         Max items processed in parallel per cycle (default: 1; >1 unverified — skills may contend on shared repo state)
-  AGENT_MAX_TURNS           Max agentic turns per item (default: 200)
-  CLAUDE_MODEL              Claude model to use (default: claude-sonnet-4-6)
-  PROMPT_PATH               Orchestration prompt (default: .claude/commands/create-script.md)
+  CLAUDE_MODEL              Default model for every agent stage (default: claude-sonnet-4-6)
+  CLAUDE_EFFORT             Default effort for every agent stage: low|medium|high|xhigh|max (default: model default)
+  STAGE_<S>_MODEL           Per-stage overrides, <S> = GENERATE | VALIDATE | DEPLOY:
+  STAGE_<S>_EFFORT            model, effort, max turns, USD budget cap, timeout.
+  STAGE_<S>_MAX_TURNS         Defaults: turns 150/60/80, timeout 60/30/45 min, no budget cap.
+  STAGE_<S>_MAX_BUDGET_USD
+  STAGE_<S>_TIMEOUT_MINUTES
 `.trim();
 
 const command = process.argv[2];
@@ -47,7 +56,7 @@ switch (command) {
     config.dryRun = dryRun;
     if (dryRun)
       console.log(
-        '[DRY RUN] Azure DevOps writes are skipped — the agent still runs at full cost (provisions an environment, publishes apps)\n',
+        '[DRY RUN] Azure DevOps writes are skipped — the pipeline still runs at full cost (provisions an environment, publishes apps)\n',
       );
     await startWatcher(config);
     break;
@@ -58,7 +67,7 @@ switch (command) {
     config.dryRun = dryRun;
     if (dryRun)
       console.log(
-        '[DRY RUN] Azure DevOps writes are skipped — the agent still runs at full cost (provisions an environment, publishes apps)\n',
+        '[DRY RUN] Azure DevOps writes are skipped — the pipeline still runs at full cost (provisions an environment, publishes apps)\n',
       );
     const result = await runPollCycle(config);
     console.log(
@@ -71,17 +80,19 @@ switch (command) {
   case 'test-item': {
     const itemIdArg = process.argv[3];
     if (!itemIdArg || isNaN(Number(itemIdArg))) {
-      console.error('Usage: devops-pull test-item <work-item-id>');
+      console.error('Usage: create-scripts test-item <work-item-id> [--resume]');
       process.exitCode = 1;
       break;
     }
     const config = loadConfig();
     config.dryRun = true;
     console.log(
-      `[DRY RUN] Testing processing for work item #${itemIdArg} (no ADO writes; agent runs at full cost)\n`,
+      `[DRY RUN] Testing processing for work item #${itemIdArg} (no ADO writes; pipeline runs at full cost)\n`,
     );
     const item = await getWorkItem(config, Number(itemIdArg));
-    const result = await processItem(config, item);
+    const result = await processItem(config, item, undefined, {
+      resume: process.argv.includes('--resume'),
+    });
     console.log(
       `\nDone: ${result.processed ? 'processed' : 'failed'}` +
         `${result.error ? ` (${result.error})` : ''} — $${(result.costUsd ?? 0).toFixed(4)}`,

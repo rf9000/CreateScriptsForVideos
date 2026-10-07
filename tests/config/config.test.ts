@@ -39,8 +39,18 @@ describe("loadConfig", () => {
     const config = loadConfig(validEnv);
 
     expect(config.pollIntervalMinutes).toBe(5);
-    expect(config.claudeModel).toBe("claude-sonnet-4-6");
-    expect(config.promptPath).toBe(".claude/commands/create-script.md");
+    expect(config.continiaCliPath).toBe("continia");
+    expect(config.envProfileId).toBe("");
+    expect(config.envReadyTimeoutMinutes).toBe(15);
+    expect(config.stages.generate).toEqual({
+      model: "claude-sonnet-4-6",
+      effort: undefined,
+      maxTurns: 150,
+      maxBudgetUsd: undefined,
+      timeoutMinutes: 60,
+    });
+    expect(config.stages.validate.maxTurns).toBe(60);
+    expect(config.stages.deploy.timeoutMinutes).toBe(45);
   });
 
   it("overrides defaults when optional vars are provided", () => {
@@ -48,14 +58,18 @@ describe("loadConfig", () => {
       ...validEnv,
       POLL_INTERVAL_MINUTES: "30",
       CLAUDE_MODEL: "claude-opus-4-6",
-      PROMPT_PATH: "custom/prompt.md",
+      CLAUDE_EFFORT: "high",
+      CONTINIA_ENV_PROFILE_ID: "prof-9",
     };
 
     const config = loadConfig(env);
 
     expect(config.pollIntervalMinutes).toBe(30);
-    expect(config.claudeModel).toBe("claude-opus-4-6");
-    expect(config.promptPath).toBe("custom/prompt.md");
+    expect(config.envProfileId).toBe("prof-9");
+    for (const stage of Object.values(config.stages)) {
+      expect(stage.model).toBe("claude-opus-4-6");
+      expect(stage.effort).toBe("high");
+    }
   });
 
   it("derives orgUrl from org name", () => {
@@ -114,9 +128,37 @@ describe("loadConfig", () => {
       expect(config.pteOutputDir).toBe("/tmp/pte");
     });
 
-    it("defaults agentMaxTurns to 200 and coerces overrides", () => {
-      expect(loadConfig(validEnv).agentMaxTurns).toBe(200);
-      expect(loadConfig({ ...validEnv, AGENT_MAX_TURNS: "300" }).agentMaxTurns).toBe(300);
+    it("applies per-stage overrides on top of the shared defaults", () => {
+      const config = loadConfig({
+        ...validEnv,
+        CLAUDE_MODEL: "model-default",
+        STAGE_GENERATE_MODEL: "model-big",
+        STAGE_GENERATE_EFFORT: "xhigh",
+        STAGE_GENERATE_MAX_TURNS: "300",
+        STAGE_GENERATE_MAX_BUDGET_USD: "12.5",
+        STAGE_GENERATE_TIMEOUT_MINUTES: "90",
+        STAGE_DEPLOY_MODEL: "",
+      });
+      expect(config.stages.generate).toEqual({
+        model: "model-big",
+        effort: "xhigh",
+        maxTurns: 300,
+        maxBudgetUsd: 12.5,
+        timeoutMinutes: 90,
+      });
+      expect(config.stages.deploy.model).toBe("model-default");
+    });
+
+    it("rejects an invalid stage override", () => {
+      expect(() => loadConfig({ ...validEnv, STAGE_VALIDATE_EFFORT: "huge" })).toThrow(
+        "STAGE_VALIDATE_EFFORT",
+      );
+    });
+
+    it("treats empty values as unset", () => {
+      const config = loadConfig({ ...validEnv, POLL_INTERVAL_MINUTES: "", CLAUDE_MODEL: "" });
+      expect(config.pollIntervalMinutes).toBe(5);
+      expect(config.stages.validate.model).toBe("claude-sonnet-4-6");
     });
 
     it("defaults outputRetentionDays to 14", () => {

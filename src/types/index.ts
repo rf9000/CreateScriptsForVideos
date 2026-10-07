@@ -5,8 +5,6 @@ export interface AppConfig {
   project: string;
   pat: string;
   pollIntervalMinutes: number;
-  claudeModel: string;
-  promptPath: string;
   dryRun: boolean;
   /** Area path to scope discovery to (WIQL `UNDER`, includes descendants). Empty = no area filter. */
   areaPath: string;
@@ -16,6 +14,12 @@ export interface AppConfig {
   continiaBankingPath: string;
   /** API token for continia.exe (passed as the global --token option). */
   continiaApiToken: string;
+  /** Path or command name of the continia CLI (`continia` on PATH in Docker). */
+  continiaCliPath: string;
+  /** DemoPortal profile ID every fresh environment is created from. */
+  envProfileId: string;
+  /** How long to wait for a new environment to reach Running. */
+  envReadyTimeoutMinutes: number;
   /** Anthropic API key for the agent. Empty = use Claude Code OAuth (~/.claude) instead. */
   anthropicApiKey: string;
   /** Writable root for the generated .md recording script. */
@@ -24,12 +28,35 @@ export interface AppConfig {
   pteOutputDir: string;
   /** Local path to the marketplace LSP plugin loaded into the agent. */
   lspPluginPath: string;
-  /** Max agentic turns for the orchestrator agent. */
-  agentMaxTurns: number;
   /** Days to keep generated output/<id>/ folders before the watcher prunes them. 0 = never prune. */
   outputRetentionDays: number;
   /** Max work items processed in parallel per poll cycle. 1 = sequential (default). */
   watchConcurrency: number;
+  /** Settings for each LLM stage of the pipeline. */
+  stages: Record<StageName, StageConfig>;
+}
+
+/** The pipeline stages that run an agent. */
+export type StageName = 'generate' | 'validate' | 'deploy';
+
+/** Model and limits for one agent stage. */
+export interface StageConfig {
+  model: string;
+  /** Reasoning effort. Undefined = the model's default. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  maxTurns: number;
+  /** Hard USD cap for the stage. Undefined = no cap. */
+  maxBudgetUsd?: number;
+  timeoutMinutes: number;
+}
+
+/** Cost and size of one agent stage run, for logging and the cost totals. */
+export interface StageUsage {
+  stage: StageName;
+  model: string;
+  costUsd: number;
+  turns: number;
+  durationMs: number;
 }
 
 /** A relation (link) on a work item, e.g. an ArtifactLink to a Git branch/commit. */
@@ -83,6 +110,8 @@ export interface ScriptResult {
   assumptions?: string[];
   gaps?: string[];
   errorMessage?: string;
-  /** USD cost reported by the agent run. */
+  /** Total USD cost of all agent stages. */
   costUsd?: number;
+  /** Per-stage usage, in run order. */
+  stages?: StageUsage[];
 }

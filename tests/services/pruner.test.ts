@@ -10,12 +10,20 @@ const NOW = 1_000 * DAY_MS; // fixed "now" so age math is deterministic
 function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     org: 'o', orgUrl: 'u', project: 'p', pat: 't',
-    pollIntervalMinutes: 5, claudeModel: 'm', promptPath: 'pp',
+    pollIntervalMinutes: 5,
     dryRun: false, areaPath: '', createScriptTag: 'create script',
     continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
     workspaceOutputDir: '/out', pteOutputDir: '/out', lspPluginPath: '',
-    agentMaxTurns: 120, outputRetentionDays: 14,
+    outputRetentionDays: 14,
     watchConcurrency: 1,
+    continiaCliPath: 'continia',
+    envProfileId: 'profile-1',
+    envReadyTimeoutMinutes: 15,
+    stages: {
+      generate: { model: 'claude-sonnet-4-6', maxTurns: 150, timeoutMinutes: 60 },
+      validate: { model: 'claude-sonnet-4-6', maxTurns: 60, timeoutMinutes: 30 },
+      deploy: { model: 'claude-sonnet-4-6', maxTurns: 80, timeoutMinutes: 45 },
+    },
     ...overrides,
   };
 }
