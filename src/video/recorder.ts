@@ -29,7 +29,7 @@ export type StepLog = {
 export type RecordOptions = {
   recording: Recording;
   hints: StagingHints;
-  /** Narration clip length per step index (ms); steps without a clip get the default hold. */
+  /** Narration clip length per step index (ms); drives the pacing. */
   holds: Map<number, number>;
   url: string;
   user: string;
@@ -47,9 +47,12 @@ export type RecordResult = {
   steps: StepLog[];
 };
 
-const DEFAULT_HOLD_MS = 1200;
-const AUDIO_BUFFER_MS = 500;
-const MIN_NARRATED_HOLD_MS = 1500;
+/** Short pause after a visible step so the eye can follow. */
+const AFTER_STEP_PAUSE_MS = 700;
+/** Breath between two narration clips. */
+const NARRATION_GAP_MS = 400;
+/** Hold on the final state after the last narration. */
+const END_TAIL_MS = 1500;
 const TYPE_DELAY_MS = 70;
 const PASSIVE = new Set(['page-shown', 'validate', 'wait']);
 
@@ -79,10 +82,23 @@ function startPageId(rec: Recording): number | string | undefined {
   return typeof id === 'number' || typeof id === 'string' ? id : undefined;
 }
 
-/** How long to hold after a step: narration clip + buffer (min 1.5 s), else the default. */
-export function holdFor(index: number, clipMs: Map<number, number>, defaultMs: number): number {
-  const clip = clipMs.get(index);
-  return clip === undefined ? defaultMs : Math.max(clip + AUDIO_BUFFER_MS, MIN_NARRATED_HOLD_MS);
+/**
+ * Pacing is driven by when the running narration ends, not by fixed holds: a
+ * narrated step waits only until the previous clip has finished; unnarrated
+ * steps play on under the voice.
+ */
+export function waitBeforeStep(narrated: boolean, nowMs: number, narrationEndsAtMs: number): number {
+  return narrated ? Math.max(0, narrationEndsAtMs + NARRATION_GAP_MS - nowMs) : 0;
+}
+
+/** Visible steps get a short pause; page-shown/validate/wait are invisible and get none. */
+export function pauseAfterStep(type: string): number {
+  return PASSIVE.has(type) ? 0 : AFTER_STEP_PAUSE_MS;
+}
+
+/** After the last step: let the last narration finish, then hold briefly on the result. */
+export function waitAtEnd(nowMs: number, narrationEndsAtMs: number): number {
+  return Math.max(0, narrationEndsAtMs - nowMs) + END_TAIL_MS;
 }
 
 export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
@@ -108,11 +124,18 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     // Everything before the first step (loading, login landing) is trimmed from the final video.
     timing.trimStartMs = Date.now() - videoStart;
 
+    let narrationEndsAt = 0;
     for (const [index, step] of opts.recording.steps.entries()) {
       const t0 = Date.now();
       const passive = PASSIVE.has(step.type);
       const entry: StepLog = { index, type: step.type, cursor: passive ? 'n/a' : 'missing', staging: [], typed: false, ms: 0 };
       try {
+        // The narration starts with the step's visuals (cursor, typing), not after them.
+        const clip = opts.holds.get(index);
+        const wait = waitBeforeStep(clip !== undefined, Date.now() - videoStart, narrationEndsAt);
+        if (wait > 0) await page.waitForTimeout(wait);
+        const stepStart = Date.now() - videoStart;
+        if (clip !== undefined) narrationEndsAt = stepStart + clip;
         const frame = await awaitFrame(page);
         if (!passive) {
           // Staging only frames the shot; if it fails, the step still runs.
@@ -141,7 +164,6 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           }, entry.staging);
         }
 
-        const stepStart = Date.now() - videoStart;
         try {
           const result = await play(page, sliceFor(opts.recording, index));
           entry.error = errorText(result.error) ?? errorText(result.fileErrors);
@@ -153,7 +175,8 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
         }
         await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
-        if (!entry.error) await page.waitForTimeout(holdFor(index, opts.holds, DEFAULT_HOLD_MS));
+        const pause = pauseAfterStep(step.type);
+        if (!entry.error && pause > 0) await page.waitForTimeout(pause);
         timing.steps.push({ stepIndex: index, startMs: stepStart, endMs: Date.now() - videoStart });
       } catch (err) {
         // Anything else that breaks inside a step (BC never idle, page closed) fails that step.
@@ -167,6 +190,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         break;
       }
     }
+    if (!error) await page.waitForTimeout(waitAtEnd(Date.now() - videoStart, narrationEndsAt));
     await page.close();
     videoPath = await page.video()?.path();
     await context.close();

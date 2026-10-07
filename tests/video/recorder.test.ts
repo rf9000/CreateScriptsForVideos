@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { holdFor, sliceFor, stageSafely } from '../../src/video/recorder.ts';
+import { pauseAfterStep, sliceFor, stageSafely, waitAtEnd, waitBeforeStep } from '../../src/video/recorder.ts';
 import { errorText, startUrl } from '../../src/video/bc-session.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
@@ -18,12 +18,26 @@ describe('sliceFor', () => {
   });
 });
 
-describe('holdFor', () => {
-  test('narrated steps hold for clip + 500 ms, at least 1500 ms; others use the default', () => {
-    const clips = new Map([[0, 4000], [1, 200]]);
-    expect(holdFor(0, clips, 1200)).toBe(4500);
-    expect(holdFor(1, clips, 1200)).toBe(1500);
-    expect(holdFor(2, clips, 1200)).toBe(1200);
+describe('narration pacing', () => {
+  test('a narrated step waits only until the previous narration has finished (plus a breath)', () => {
+    expect(waitBeforeStep(true, 10_000, 12_000)).toBe(2_400);
+    expect(waitBeforeStep(true, 15_000, 12_000)).toBe(0);
+  });
+
+  test('unnarrated steps never wait: they play under the running voice', () => {
+    expect(waitBeforeStep(false, 10_000, 12_000)).toBe(0);
+  });
+
+  test('after a step only a short pause for the eye; invisible steps none', () => {
+    expect(pauseAfterStep('input')).toBe(700);
+    expect(pauseAfterStep('invoke')).toBe(700);
+    expect(pauseAfterStep('page-shown')).toBe(0);
+    expect(pauseAfterStep('validate')).toBe(0);
+  });
+
+  test('the video ends after the last narration plus a short tail', () => {
+    expect(waitAtEnd(20_000, 23_000)).toBe(4_500);
+    expect(waitAtEnd(30_000, 23_000)).toBe(1_500);
   });
 });
 
