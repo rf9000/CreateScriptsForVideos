@@ -98,6 +98,7 @@ export async function generateClips(
   outDir: string,
   opts: { apiKey: string; locale: string; tts?: TtsFn; probe?: (path: string) => Promise<number> },
 ): Promise<Clip[]> {
+  if (Object.keys(narration).length === 0) return [];
   if (!opts.apiKey && !opts.tts) throw new Error('OPENAI_API_KEY is not set; narration needs it');
   const tts = opts.tts ?? openAiTts(opts.apiKey);
   const probe = opts.probe ?? probeDuration;

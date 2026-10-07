@@ -34,6 +34,7 @@ CreateScriptsForVideos watches Azure DevOps for work items tagged `create script
 - `src/services/` — processor, watcher, pipeline, agent stages, continia CLI wrapper, pruner
 - `src/types/` — shared interfaces
 - `src/cli/` — entrypoint (`watch`, `run-once`, `test-item [--resume]`)
+- `src/video/` — demo video: recording lint, BC replay session, cosmetic staging, narration, composition
 - `prompts/` — agent stage prompts (`invariants.md` plus one per stage), appended to the Claude Code system prompt
 - `.claude/skills/` — demo-data-orchestrator, demo-data-validator, demo-spec-generator, continia-* CLI skills
 - `tests/` — mirrors src/ structure

@@ -55,7 +55,8 @@ This mirrors the investigate tool's deployment. The differences, all because thi
 4. Provision the AL compiler (see [AL compiler](#al-compiler)) and the LSP plugin
    (see [AL language-server plugin](#al-language-server-plugin)).
 5. `cp CreateScriptsForVideos/.env.create-scripts.example .env.create-scripts` and fill in
-   `AZURE_DEVOPS_PAT`, `CONTINIA_API_TOKEN`, and `ANTHROPIC_API_KEY`. This file lives at the
+   `AZURE_DEVOPS_PAT`, `CONTINIA_API_TOKEN`, `ANTHROPIC_API_KEY`, and (for `create video` items)
+   `OPENAI_API_KEY`. This file lives at the
    team root next to `docker-compose.yml` (where `env_file:` resolves it), NOT inside the repo.
    The agent authenticates with the API key (API billing) — unlike the investigate tool, no
    host `~/.claude` OAuth mount is used, so there is nothing to re-authenticate.
@@ -148,6 +149,10 @@ same way here.
   credentials). Run `docker compose exec create-scripts-for-videos bun src/cli/index.ts test-item
   <id> --resume` to continue from the last good step, e.g. reuse the generated PTE and the
   provisioned environment after a deploy failure.
+- **Demo videos (`create video` tag):** the image contains Chromium (Playwright, installed at
+  `/ms-playwright`) and the recorder runs headless inside the container. Each video item writes
+  `recording.yml`, `narration.yml`, `video/` (raw webm, per-step screenshots) and `demo.mp4` in
+  `output/<id>/`; the mp4 is attached to the work item unless it exceeds 130 MB.
 - **Never write into continia-banking:** `PTE_OUTPUT_DIR`/`WORKSPACE_OUTPUT_DIR` point at the
   writable `/app/output` volume, separate from the `:ro` banking mount. Keep it that way.
 - **Output is browsable on the host:** `/app/output` is bind-mounted to

@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y git curl bash libicu-dev && rm -rf /var
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
+# Chromium for the video recorder (Playwright), with its system libraries. Installed
+# outside /root so the non-root claude user can launch it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN bunx playwright install --with-deps chromium && chmod -R a+rx /ms-playwright
+
 # Copy application source
 COPY . .
 

@@ -19,6 +19,8 @@ Watches Azure DevOps for work items tagged `create script` and turns each one in
 3. The script is attached to the work item, and a comment carries the environment URL and credentials. On failure, the comment explains why and lists any environment that is still running.
 4. The tag is removed after each attempt. Re-adding it requests a new run.
 
+Items tagged `create video` run the same steps, then record the demo in the environment with BC's own replay engine, narrate it and attach `demo-video-<id>.mp4` (a draft for review). The generate stage writes the recording (`recording.yml`), FastTab hints and narration next to the script; see `src/video/` and `prompts/generate-video.md`.
+
 Each agent stage has its own model, effort, turn cap, budget cap and timeout. See `.env.example`.
 
 ## Getting started

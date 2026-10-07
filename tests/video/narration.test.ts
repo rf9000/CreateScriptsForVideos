@@ -38,6 +38,10 @@ describe('generateClips', () => {
     expect(tts).toHaveBeenCalledTimes(2);
   });
 
+  test('nothing to narrate needs no API key', async () => {
+    expect(await generateClips({}, tmpdir(), { apiKey: '', locale: 'en-US' })).toEqual([]);
+  });
+
   test('throws without an API key', async () => {
     await expect(generateClips({ 0: 'x' }, tmpdir(), { apiKey: '', locale: 'en-US' })).rejects.toThrow('OPENAI_API_KEY');
   });
