@@ -13,7 +13,11 @@ export interface ExecResult {
   stderr: string;
 }
 
-export type Exec = (cmd: string[], timeoutMs: number) => Promise<ExecResult>;
+export type Exec = (
+  cmd: string[],
+  timeoutMs: number,
+  env: Record<string, string | undefined>,
+) => Promise<ExecResult>;
 
 export class ContiniaCliError extends Error {
   constructor(message: string) {
@@ -68,8 +72,8 @@ export interface ContiniaCli {
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
-const defaultExec: Exec = async (cmd, timeoutMs) => {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', timeout: timeoutMs });
+const defaultExec: Exec = async (cmd, timeoutMs, env) => {
+  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', timeout: timeoutMs, env });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -123,12 +127,17 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
     const json = opts.json ?? true;
     const cmd = [
       config.continiaCliPath,
-      ...(config.continiaApiToken ? ['--token', config.continiaApiToken] : []),
+      // The token travels in the environment (not argv, which shows in process
+      // listings); pin api-token auth so a VS Code Azure AD setting can't win.
+      ...(config.continiaApiToken ? ['--auth-method', 'api-token'] : []),
       ...args,
       ...(json ? ['--json'] : []),
     ];
     const label = `continia ${args.join(' ')}`;
-    const result = await exec(cmd, COMMAND_TIMEOUT_MS);
+    const env = config.continiaApiToken
+      ? { ...process.env, CONTINIA_API_TOKEN: config.continiaApiToken }
+      : process.env;
+    const result = await exec(cmd, COMMAND_TIMEOUT_MS, env);
     if (result.exitCode !== 0) {
       const detail = (result.stderr.trim() || (opts.secret ? '' : result.stdout.trim())).slice(0, 500);
       throw new ContiniaCliError(`${label} exited ${result.exitCode}: ${detail}`);

@@ -19,8 +19,9 @@ These rules hold for every stage:
 - **The pipeline supplies everything the demo needs.** Data comes from the PTE, or from the
   `banking-demo` app which the deploy stage publishes when needed. The script never asks the presenter
   to install apps or prepare data; the presenter only performs the on-camera steps of the feature.
-- **The continia CLI authenticates with `--token "$CONTINIA_API_TOKEN"`.** Reference the variable;
-  never write the token's value into a file or your output.
+- **The continia CLI reads its token from `CONTINIA_API_TOKEN`,** which is already set. Pass
+  `--auth-method api-token` as the first option of every command so a local Azure AD setting can't
+  take over. Never print the token or write it into a file.
 - Generate GUIDs with `bun -e "console.log(crypto.randomUUID())"`, which works on Windows and Linux.
 
 When the stage is done, return the structured result the stage asks for. If the stage cannot

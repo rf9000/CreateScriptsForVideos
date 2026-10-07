@@ -12,27 +12,29 @@ function execReturning(...results: Array<Partial<ExecResult>>) {
 }
 
 describe('createContiniaCli', () => {
-  test('prefixes the token and appends --json', async () => {
+  test('passes the token via the environment, pins api-token auth, and appends --json', async () => {
     const exec = execReturning({ stdout: '{"id":"env-1"}' });
     const cli = createContiniaCli(testConfig({ continiaCliPath: '/opt/continia' }), exec);
     const id = await cli.createEnvironment('Demo #1', 'prof-1');
     expect(id).toBe('env-1');
     expect(exec.mock.calls[0]![0]).toEqual([
-      '/opt/continia', '--token', 'cont-token',
+      '/opt/continia', '--auth-method', 'api-token',
       'env', 'create', '--name', 'Demo #1', '--profile', 'prof-1', '--json',
     ]);
+    expect(exec.mock.calls[0]![2]['CONTINIA_API_TOKEN']).toBe('cont-token');
+    expect(exec.mock.calls[0]![0]).not.toContain('cont-token');
   });
 
-  test('omits --token when no token is configured', async () => {
+  test('leaves auth to the CLI defaults when no token is configured', async () => {
     const exec = execReturning({ stdout: '{"id":"env-1","status":"Running"}' });
     await createContiniaCli(testConfig({ continiaApiToken: '' }), exec).getEnvironment('env-1');
-    expect(exec.mock.calls[0]![0]).not.toContain('--token');
+    expect(exec.mock.calls[0]![0]).not.toContain('--auth-method');
   });
 
   test('env start runs without --json', async () => {
     const exec = execReturning({ stdout: 'started' });
     await createContiniaCli(testConfig(), exec).startEnvironment('env-1');
-    expect(exec.mock.calls[0]![0]).toEqual(['continia', '--token', 'cont-token', 'env', 'start', 'env-1']);
+    expect(exec.mock.calls[0]![0]).toEqual(['continia', '--auth-method', 'api-token', 'env', 'start', 'env-1']);
   });
 
   test('reads environment fields under alternative names', async () => {

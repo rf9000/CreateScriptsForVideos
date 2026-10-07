@@ -11,17 +11,16 @@ Compile the PTE and publish it there.
    repo as a dev extension first (use the `continia-deploy` skill; build output must not land inside
    the repo, so deploy from a copy under the PTE folder's parent if the CLI would write next to the
    sources).
-3. Use the `continia-deps` skill to install the PTE's dependencies on the environment and download
-   symbols into the PTE folder.
-4. Use the `continia-deploy` skill to compile and publish the PTE. Fix compile errors in the PTE and
-   retry until it publishes.
+3. Use the `continia-deps` skill to install the PTE's dependencies on the environment.
+4. Use the `continia-deploy` skill to compile and publish the PTE; deploy refreshes the PTE's
+   symbols from the environment itself. Fix compile errors in the PTE and retry until it publishes.
 5. The PTE's install trigger runs `VerifyDemoData()`. A "Demo data verification failed" error means
    the seeding code is wrong: fix the data creation and redeploy, the same as a compile error.
 
 The CLI finds apps relative to the current directory and rejects some absolute app paths, so run
 `deps` and `deploy` from the PTE folder's parent (this item's own folder) with `pte` as the app path.
-`deps download` fetches direct dependencies only; if the compiler reports missing base or transitive
-packages, fetch them as the `continia-deps` skill describes.
+Don't run `continia env use` or create a `.continia` folder: symbol state anchors at the nearest
+`.continia` ancestor, and each item must keep its own.
 
 Don't create, start, stop, or delete environments; the pipeline owns the environment lifecycle and
 checks the installed apps after you finish.

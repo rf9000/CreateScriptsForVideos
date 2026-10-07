@@ -1,68 +1,126 @@
 ---
 name: continia-deps
-description: Installs an AL app's dependencies on a Business Central environment and downloads their symbol packages into .alpackages with the continia CLI. Use it before compiling or deploying a PTE, or when compilation fails with missing symbols or packages.
+description: Install external dependencies on a BC environment and download symbol packages for AL compilation. Use when (1) compilation fails with missing symbol or reference errors, (2) a fresh environment needs base apps installed before deploying, (3) the user asks to install or update dependencies, or (4) .alpackages is empty or outdated.
 ---
 
-# Dependencies and symbols
+# Manage Dependencies
 
-## Running the CLI
+The CLI is located at `.tools/continia.exe`.
 
-- The CLI is `continia` on PATH in Docker. The pipeline passes its path as `CONTINIA_CLI_PATH` (locally `.claude/.tools/continia.exe`) and lists it in the prompt; use that path wherever the examples say `continia`.
-- Every command except `deps tree` calls the DemoPortal API and needs `--token "$CONTINIA_API_TOKEN"`. The examples omit it for brevity; write it as `continia --token "$CONTINIA_API_TOKEN" deps install <envId> <appPath> --json`. Never write the token's value into a file or output.
-- `deps install` and `deps download` resolve `<appPath>` against the current directory and need `<appPath>/app.json` to exist, otherwise they fail with "No app.json found at ...". Run them from the app folder's parent with the folder name as the path, the same way `continia-deploy` runs.
+Two distinct operations:
 
-## Install one app by id
+## Install on Environment
 
-```bash
-continia deps install-by-id <envId> <appId> --json
-continia deps install-by-id <envId> <appId> --version 29.0.0.0 --json
-```
-
-Installs a catalogue app by its GUID, with no local source. Defaults to the latest version for the environment profile's BC version and target; `--bc-version` and `--target Cloud|OnPrem` override those. JSON result:
-
-- `{ "installed": true, "alreadyPresent": true, "app": {...} }`: already on the environment, nothing done.
-- `{ "installed": true, "alreadyPresent": false, "app": {...} }`: installed now.
-- `{ "installed": false, "reasonCode": "not-found", "reason": "..." }`: no catalogue app with that id for this BC version, target, and version. Exit code 1.
-- `{ "installed": false, "reasonCode": "install-failed", "reason": "...", "app": {...} }`: the catalogue had it but the install call failed. Exit code 1.
-
-## Install an app's dependencies
-
+Install an app's **direct** external dependencies on the BC environment (runtime dependencies):
 ```bash
 continia deps install <envId> <appPath> --json
 ```
 
-Reads the `dependencies` array of `app.json` and installs each entry from the DemoPortal catalogue, matched by name and version for the environment's BC version and target. Only direct dependencies are handled. It does not check what is already installed first, and a dependency it can't find or install is logged and skipped rather than failing the command. JSON output is `{ "installed": ["<name>", ...] }`, so compare it with `app.json` to see what was skipped, and confirm with `continia env apps <envId> --json`.
+Reads `app.json`, looks up each direct dependency by appId (falling back to publisher/name),
+and installs it — skipping any already installed at a satisfying version. Use `--dry-run` to
+preview. Override the env's profile lookup with `--bc-version <ver>` / `--target <Cloud|OnPrem>`
+(same flags as `deps install-by-id`). Transitive runtime install is intentionally not performed
+(it would risk installing Microsoft test/mock libraries onto the environment); the symbol
+closure is `deps download`'s job.
 
-## Download symbols
+**Exit code:** a genuine install failure (BC rejects the install) lands in the `failed` JSON array and makes the command exit non-zero (1). A catalogue *miss* stays in `skipped` (usually a pre-installed Microsoft platform app) and keeps exit 0 — so `$?` distinguishes "couldn't install" from "nothing to install".
 
+**JSON contract:** exactly one object on stdout on every path, carrying `success` on both. A run that cannot start (e.g. `<appPath>` has no `app.json`) emits `{ success: false, error: { code, message }, ... }` with every collection present but empty, so a consumer never has to check whether a key exists before reading it.
+
+**Symbol gaps:** After `deps install`, check two fields in JSON (or the summary line on stderr in human mode):
+- `symbolsMissing` — no `.app` at all in `.alpackages` for a satisfied dependency. Run `continia deps download <envId> <appPath>` to populate it.
+- `symbolsStale` — a `.app` is present but the symbol engine's refresh policy would replace it anyway (env switch, version drift, a publish event newer than the cached download, platform drift). Run `continia deps refresh <appPath>` to replace it.
+
+Both are computed dry-run, no downloads.
+
+## Download Symbols
+
+Download the **transitive** `.app` symbol closure to `.alpackages` (compile-time dependencies):
 ```bash
 continia deps download <envId> <appPath> --json
 ```
 
-Downloads one `.app` per entry in the `dependencies` array of `app.json` into `<appPath>/.alpackages`, trying the DemoPortal catalogue first and then the environment's `/dev/packages` endpoint. JSON output is `{ "downloaded": ["<name>", ...], "skipped": [{ "name", "publisher", "reason" }] }`.
+Starting from `app.json` — both the `dependencies` array and the `application` / `platform`
+base-symbol references — the CLI reads each package's embedded `NavxManifest.xml` and
+recursively resolves the symbol closure the AL compiler needs (this is what prevents AL1022,
+both for transitive dependency refs such as `Application Test Library` / `Permissions Mock`
+and for the Microsoft base/system symbols pulled in via `application` / `platform`).
 
-As of v0.12.0 it fetches direct dependencies only. It doesn't follow their own dependencies and doesn't fetch the `application` / `platform` base symbols (Base Application, System Application, System). When alc reports a missing package (AL1022 or "could not find package"), fetch that package the same way: create a scratch folder outside any repo with an `app.json` whose `dependencies` list the missing packages (id, name, publisher, version), run `deps download` on it, and copy the `.app` files into the PTE's `.alpackages`. `continia deploy` also merges each app's `.alpackages` into `<workspaceRoot>/.alpackages` before compiling, so packages placed in either are found.
+The target environment's NST is treated as truth: a dependency **installed on the
+env** is fetched from BC's `/dev/packages` endpoint (authoritative — the env can be running a
+custom same-version build the catalogue doesn't have). The DemoPortal catalogue is used only
+for a dependency **not installed on the env** — this command, unlike `compile`, is allowed to
+reach it, since staging happens before `deps install` has necessarily run. A package already
+cached with valid provenance (matches the env, no newer publish event, no version drift) costs
+zero network traffic.
 
-## Dependency tree
+Add `--clean` to rebuild `.alpackages` from scratch (also drops recorded provenance for this
+app). Override the env's profile lookup with `--bc-version <ver>` / `--target <Cloud|OnPrem>`
+when needed.
 
+JSON output: `{ success, envId, packageDir, resolved: [...], skipped: [...], counts: { refreshed, cached, cachedRefreshFailed, staged, missing, errors }, degraded, stateSaved }`.
+- Each `resolved` entry: `{ resolved: { id, name, publisher, version }, source, reasonCode, reason }` — `source` is `dev-endpoint`, `catalogue`, or `existing-cache` (already there, untouched this run).
+- Each `skipped` entry: `{ dep: { id, name, publisher, version }, reasonCode, reason, workspaceApp, guidance? }` — `workspaceApp: true` means the dependency is a sibling app in this workspace that the target env doesn't publish; `guidance` then names the fix (deploy it, or `compile --local-symbols`).
+- **`resolved.length` is deliberately NOT `counts.refreshed + counts.cached + counts.staged`.** `resolved` lists every package that ended up usable in the package directory, which includes the ones served from cache after a failed refresh (`reasonCode: "cached-refresh-failed"`) — they are on disk and alc will read them. `counts.cached` excludes those, reporting them under `counts.cachedRefreshFailed` instead, so "verified cache hit" and "unverified fallback" never collapse into one number. To reconcile: `resolved.length === counts.refreshed + counts.cached + counts.cachedRefreshFailed + counts.staged`.
+- `degraded: true` means this run did **not** end with every dependency in the closure verified against the environment: a package kept from cache after a failed refresh, a dependency that couldn't be fetched, or one the environment doesn't hold. Same definition `compile` and `deploy` use, so one predicate works across all three. A `deps download` that reports `skipped` entries is degraded — the cache it left behind is not compile-ready.
+
+## Force a Refresh
+
+`deps download` (and `compile`/`deploy`) only refresh what's provably stale: no provenance,
+a hash mismatch, a different source env, version drift, or a publish event recorded in
+`.continia/symbol-state.json` after the download. A **same-version republish done by another
+tool** (the VS Code Env Explorer) or **from another workspace** leaves no trace this CLI can
+see — the NST exposes no content hash, and no publish event lands here. That's the one gap
+the env-truth model doesn't close on its own. If you suspect it happened, force it:
 ```bash
-continia deps tree --workspace-root <dir>
-continia deps tree <appPath> --workspace-root <dir>
+continia deps refresh <appPath> --json          # non-Microsoft dependencies only
+continia deps refresh <appPath> --all --json    # also Microsoft platform/base symbols (large, rarely needed)
+```
+Resolves the environment the same way `compile`/`deploy` do: `--env <id>` > `CONTINIA_ENV` >
+the workspace default set by `continia env use`.
+
+## Version Resolution (BC major vs Continia major)
+
+**Continia app major and BC platform major are independent.** A Continia app commonly targets the *previous* BC platform major — so an environment on BC major `N` legitimately needs Continia dependencies at major `N+1`. (Concrete example at time of writing: a BC 28 env needs Continia 29 deps; after the next release the same pattern reads BC 29 / Continia 30.) The DemoPortal catalogue for a BC `N` env (`apps.json?bc_version=N...`) **does** carry the `N+1` Continia builds — they are reachable, just stored under a BC-version-keyed blob path.
+
+`deps install` and `deps download` resolve each dependency to the **major required by `app.json`**, not the env's BC major. An AL dependency is satisfied only by the same major — a lower-major build can never satisfy a higher-major dependency (it would fail compile with AL1022).
+
+If a lower-major build lands for a dependency that requires a higher major, that is a resolution problem to investigate — **not** evidence that the higher-major build is unpublished or that you must fall back to a lower-major source branch. Confirm with `continia env catalog <envId> --json` (or `deps tree`) that the required build exists before changing branches.
+
+To install a specific build by GUID, use `--app-version` (an **exact** selector, e.g. `--app-version 29.0.0.0`): `continia deps install-by-id <envId> <appId> --app-version <ver> --json`. With the flag, a different installed build (higher or lower) is reinstalled to the requested version rather than skipped; without it, any installed build counts as present.
+
+## Dependency Tree
+
+Visualize the dependency graph without installing or downloading:
+```bash
+continia deps tree --workspace-root .
+continia deps tree <appPath> --workspace-root .
 ```
 
-Prints the local dependency graph without calling the API; dependencies not found in the workspace are marked `[external]`.
+## Fresh Environment Setup
 
-## PTE setup on a fresh environment
+1. Invoke `continia-env-setup` to get a running env (this also sets it as the workspace
+   default via `continia env use`, so you don't need to repeat `--env` below)
+2. Install deps in dependency order:
+   ```bash
+   continia deps install <envId> Core/Cloud --json
+   continia deps install <envId> DeliveryNetwork/Cloud --json
+   continia deps install <envId> DocumentOutput/Cloud --json
+   ```
+3. Invoke `continia-deploy` to build and publish — `compile`/`deploy` pull dependency symbols
+   from the environment automatically as they run; a separate `deps download` pass before
+   compiling is no longer part of the normal workflow (see `continia-deploy` for the
+   env-truth model). Run `deps download` yourself only to pre-stage `.alpackages` without
+   compiling (e.g. inspecting the closure, or preparing an offline compile).
 
-The pipeline has already created and started the environment and installed the Continia activation app. For a demo-data PTE in `<parent>/<pte>`:
+## Fixing Missing Symbol Errors
 
-1. If the PTE depends on catalogue apps that may be missing (for example "Continia Banking Internal Access", id `6e549e35-d1b2-4878-a37a-a736c22f35bf`), install them by id: `continia deps install-by-id <envId> <appId> --json`. Treat `alreadyPresent: true` as success.
-2. From `<parent>`, install the remaining direct dependencies: `continia deps install <envId> <pte> --json`.
-3. From `<parent>`, download symbols: `continia deps download <envId> <pte> --json`. Check `skipped`.
-4. Compile and publish with the `continia-deploy` skill. If compile reports missing packages, fetch them as described under "Download symbols" and redeploy.
-
-## Fixing missing-symbol errors
-
-1. `continia deps download <envId> <appPath> --json`, then check `skipped`.
-2. Fetch anything still missing (transitive or base packages) as described above.
-3. `continia compile <appPath> --json` or redeploy.
+`compile`/`deploy` refresh symbols from the target environment automatically, so most
+AL1022/AL0132-style errors from a stale cache no longer happen. If you still hit one:
+- **Dependency not installed on the env** — compile/deploy fail with a message naming it:
+  `continia deps install <envId> <appPath> --json`, then deploy the dependency, or
+  `continia deploy <envId> <appPath> --with-deps --json`.
+- **Suspected stale cache from another tool or workspace** (the one gap env-truth can't
+  detect on its own — see "Force a Refresh" above): `continia deps refresh <appPath> --json`.
+- **Pre-publish chain check**, dependency not deployed yet: `continia compile <appPath> --local-symbols --json`.
+- **Deliberate offline compile**: `continia compile <appPath> --no-symbol-refresh --json` (uses whatever is already cached, unverified).

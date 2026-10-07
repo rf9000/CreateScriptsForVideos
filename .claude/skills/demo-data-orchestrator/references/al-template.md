@@ -56,7 +56,7 @@ Before writing it, generate the id with `bun -e "console.log(crypto.randomUUID()
   and codeunits. If compilation reports a version mismatch on it, use the version that
   `continia deps` downloaded.
 - Add a dependency for each other Continia app (Import, Export, ...) whose objects the codeunit
-  references. The deploy stage fetches symbols into the PTE's `.alpackages/` (see the `continia-deps` skill; base and transitive packages may need a second fetch).
+  references. The deploy stage refreshes the PTE's symbols from the environment when it compiles.
 - 50000-50099 lies outside the Continia reserved ranges and is used for demo extensions.
 
 ## .vscode/launch.json
