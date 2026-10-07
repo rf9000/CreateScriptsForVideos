@@ -1,128 +1,93 @@
 ---
 name: continia-deploy
-description: Compile and deploy AL code to a BC environment. Handles single-app and multi-app deploys with topological dependency ordering. Use when (1) AL code was changed and needs deploying, (2) the user asks to compile and publish, (3) a test fix needs deploying before re-running tests, or (4) a fresh environment needs all apps deployed. Invoke continia-env-setup first if no envId is available.
+description: Compiles AL apps and publishes them to a Business Central environment with the continia CLI, in dependency order when several local apps are involved. Use it to deploy a PTE or another AL app, and to diagnose compile, ruleset, and publish errors.
 ---
 
-# Deploy AL Code
+# Compile and deploy
 
-Compile and publish AL apps to a running BC environment.
+## Running the CLI
 
-The CLI is located at `.tools/continia.exe`.
+- The CLI is `continia` on PATH in Docker. The pipeline passes its path as `CONTINIA_CLI_PATH` (locally `.claude/.tools/continia.exe`) and lists it in the prompt; use that path wherever the examples say `continia`.
+- `deploy`, `publish`, and `unpublish` call the DemoPortal API and need `--token "$CONTINIA_API_TOKEN"`; `compile` doesn't. The examples omit it for brevity; write it as `continia --token "$CONTINIA_API_TOKEN" deploy <envId> <appPath> --json`. Never write the token's value into a file or output.
+- You need a running environment id. In a pipeline run it is given to you; don't create, start, stop, or delete environments. Dependencies and symbols come first (`continia-deps` skill).
 
-## Prerequisites
+## Where to run it
 
-A running environment ID. If unavailable, invoke `continia-env-setup` first.
+`deploy` discovers apps under `--workspace-root` (default: the current directory). If that folder has an `app.json` itself, it is the only app found; otherwise subfolders are scanned a few levels deep, skipping dot-folders and `node_modules`. `<appPath>` is resolved against the workspace root and must match a discovered app folder, otherwise the command fails with "No app.json found at ...", which also happens with some absolute paths. Run it from the app folder's parent with the folder name as the relative path:
 
-## Strategy Selection
-
-**Single app, deps already published:**
 ```bash
+cd <parent>
+continia deploy <envId> <pte> --json
+```
+
+Deploy writes files: the compiled `.app` lands in the app folder, and a shared package cache is created at `<workspaceRoot>/.alpackages`. To deploy an app whose sources live in a read-only repo (such as `banking-demo` in continia-banking), copy the app folder somewhere you own (for example next to the PTE folder) and deploy the copy.
+
+## Deploy strategies
+
+```bash
+# Single app; its dependencies are already on the environment
 continia deploy <envId> <appPath> --json
-```
 
-**Single app with local dependencies (or fresh env):**
-```bash
+# App plus the workspace-local apps it depends on, in topological order
 continia deploy <envId> <appPath> --with-deps --json
-```
 
-**All workspace apps:**
-```bash
-continia deploy <envId> --all --workspace-root <sessionRoot> --json
-```
+# Every app under the workspace root (often far more than you want; prefer explicit apps)
+continia deploy <envId> --all --workspace-root <dir> --json
 
-**Override schema sync mode** (default: Synchronize; options: Synchronize, ForceSync, Recreate):
-```bash
-continia deploy <envId> <appPath> --sync-mode ForceSync --json
-```
-
-**Override ruleset path** (useful for workspace `.cli-ruleset.json` variants):
-```bash
-continia deploy <envId> <appPath> --ruleset "Banking Rulesets/.cli-ruleset.json" --json
-```
-`--ruleset` applies only to the explicit `<appPath>` target by default. Pass `--ruleset-scope all` to apply it to every app in a `--with-deps` or `--all` run.
-
-**Per-app NDJSON progress** (one line per app, useful for CI / long deploys):
-```bash
+# One NDJSON line per app as it finishes, instead of one array at the end
 continia deploy <envId> --all --json --stream
-```
 
-**Continue on failure** (collect per-app status across the workspace instead of aborting on first failure):
-```bash
+# Keep going after a per-app failure (--force is a deprecated alias)
 continia deploy <envId> --all --continue-on-error --json
 ```
-(`--force` is kept as a deprecated alias for back-compat.)
 
-**Breaking-change refactor (member removed from base, dependents installed):**
-```bash
-continia deploy <envId> <appPath> --with-deps --unpublish-dependents --json
-```
-Unpublishes any workspace app already installed on the env (in reverse dependency order) before re-publishing in topo order. Avoids BC's "extension compilation failed" rollback that fires when the base recompiles installed dependents against new (now-incompatible) symbols. Only handles workspace consumers — third-party apps depending on the base are NOT touched, so after the new base publishes those third-party apps will be left broken until republished. The DemoPortal API does not block this; if any third-party dependents must be preserved, reinstall them yourself afterwards.
+Schema sync mode: `--sync-mode Synchronize|ForceSync|Recreate` (default `Synchronize`). `ForceSync` accepts destructive table changes; `Recreate` drops and recreates the app's tables and is the last resort.
+
+## Replacing an installed app
+
+- Same-version redeploy: BC silently no-ops a publish of a version that is already installed, so the old binary keeps running, and v0.12.0 doesn't unpublish it for you. Either bump `version` in `app.json` (simplest for a PTE), or unpublish the installed copy first with `continia unpublish` or `deploy --unpublish-dependents`.
+- `--unpublish-dependents`: before publishing, unpublishes every installed app whose id matches an app in this deploy run, in reverse dependency order, then republishes in topological order. Use it for breaking changes in a base app (removed members) to avoid BC's "extension compilation failed" rollback when it recompiles installed dependents. It only touches apps in the run; third-party apps that depend on them are left broken until they are republished, and the API doesn't stop you.
 
 ## Rulesets
 
-`continia compile` and `continia deploy` auto-load the ruleset in this order: `<app>/.vscode/settings.json` `al.ruleSetPath`, then `<workspaceRoot>/.vscode/settings.json`, then `<app>/ruleset.json` if present. Explicit `--ruleset <path>` overrides all three and is scoped to the target app only — dep apps keep their own auto-discovery. Pass `--ruleset-scope all` to apply the same ruleset to every app in the run.
+When `--ruleset` isn't given, `compile` and `deploy` look for a ruleset in this order: `al.ruleSetPath` in `<app>/.vscode/settings.json`, then in `<workspaceRoot>/.vscode/settings.json`, then `<app>/ruleset.json`. `${workspaceFolder}` is substituted, and a configured path that doesn't exist is ignored with a warning. An explicit `--ruleset <path>` overrides auto-discovery and, in v0.12.0, applies to every app compiled in the run.
 
 ```bash
-continia deploy <envId> <appPath> --ruleset "Banking Rulesets/.cli-ruleset.json" --json
+continia deploy <envId> <appPath> --ruleset <rulesetPath> --json
 ```
 
-Relative `--ruleset` (and `--package-cache`) paths resolve against `--workspace-root` (default: current directory) and support `${workspaceFolder}`. An explicit `--ruleset` whose file does not exist is a hard error.
+- AL1033 "external rulesets are not allowed": `alc.exe` rejects `includedRuleSets` that point at HTTPS URLs, which VS Code accepts. Provide a sibling ruleset (for example `.cli-ruleset.json`) whose includes are local file paths, and point `al.ruleSetPath` or `--ruleset` at it.
+- AA0215 (file name must match the object name) fails the compile before a ruleset can suppress other findings. Rename the file once.
 
-**External HTTPS includes are rejected by `alc.exe`.** VS Code happily loads remote rulesets via `includedRuleSets`; CLI `alc.exe` errors with:
+## Results
 
-```
-error AL1033: external rulesets are not allowed.
-```
+JSON output is one entry per app:
 
-If a workspace uses such a ruleset, ship a sibling `.cli-ruleset.json` whose `includedRuleSets` point at local file paths only, and either point `al.ruleSetPath` at it or pass it via `--ruleset`.
-
-**Pre-existing AA0215 errors block compile.** AL CodeCop AA0215 requires the source filename to match the object name. If a file fails this rule, compile errors out before the ruleset can suppress anything else — fix the filename (`git mv`) once.
-
-## Result Interpretation
-
-JSON output is an array per app:
 ```json
-[{"app": "Continia Software_Continia Core", "compiled": true, "published": true}]
+[{ "app": "<Publisher>_<Name>", "compiled": true, "published": true }]
 ```
 
-On failure, the `error` field contains details:
-- **Missing symbols** -- invoke `continia-deps` to download dependencies, then retry
-- **AL syntax errors** -- fix the code and re-deploy
-- **"App is already installed" (same-version re-deploy):** BC silently no-ops a same-version POST. The CLI automatically unpublishes the installed entry first so the new binary actually replaces the old one. Opt out with `--no-replace-same-version`.
-- **Schema sync errors** -- retry with `--sync-mode ForceSync` (or `Recreate` as last resort, which drops and recreates tables)
-- **Connection refused** -- environment may have stopped; re-run `continia-env-setup`
+On failure, `error` holds the compiler output or the publish message, and the run stops at the first failing app unless `--continue-on-error` is set. Exit code is 1 when any app failed.
 
-## Standalone Operations
+- Missing symbols or packages (AL1022 and similar): fetch them with the `continia-deps` skill and redeploy.
+- AL syntax or semantic errors: fix the code and redeploy.
+- Schema sync errors: retry with `--sync-mode ForceSync`, and `Recreate` only as a last resort.
+- An error raised from an install or upgrade trigger: the app's own code failed while installing; fix it and redeploy.
+- Connection refused: the environment has stopped.
 
-Compile only (no publish):
+## Standalone commands
+
 ```bash
-continia compile <appPath> --json
-```
+# Compile only; no API call
+continia compile <appPath> [--package-cache <dir>] [--ruleset <path>] [--workspace-root <dir>] --json
 
-Compile uses the AL VS Code extension's bundled `alc.exe` (matched against analyzer DLLs by construction — no version mismatch). Override with `CONTINIA_ALC_PATH=<path>`. Without an AL extension installed, falls back to altool's `al compile` and warns on stderr — analyzers may fail to load in that mode.
+# Publish a pre-built .app
+continia publish <envId> <appFile> [--sync-mode ForceSync] --json
 
-Code analyzers (CodeCop, UICop, AppSourceCop, PerTenantExtensionCop, BCLinterCop) are auto-loaded from `<appPath>/.vscode/settings.json` (`al.codeAnalyzers` array). Standard placeholders (`${CodeCop}`, `${analyzerFolder}BusinessCentral.LinterCop.dll`, etc.) resolve against the same AL extension. Missing DLLs warn on stderr and skip — compile still runs.
-
-Publish a pre-built .app file:
-```bash
-continia publish <envId> <appFile> --json
-continia publish <envId> <appFile> --sync-mode ForceSync --json
-```
-
-Unpublish an installed extension:
-```bash
+# Unpublish; omit --app-version to remove every installed version
 continia unpublish <envId> --name "<App Name>" --publisher "<Publisher>" [--app-version <v>] --json
 ```
-Omit `--app-version` to remove all versions. (Flag is `--app-version`, not `--version` — the latter collides with the global `continia --version`.) BC will refuse if other installed apps depend on this one — unpublish those first, or use `deploy --unpublish-dependents` for the workspace cascade.
 
-## Gotchas
+The flag is `--app-version`, not `--version`, which is the global version flag. BC refuses to unpublish an app that other installed apps depend on; unpublish those first, or use `deploy --unpublish-dependents` for apps in the workspace.
 
-- **Deploy from the correct working directory** — The CLI discovers apps from the cwd. Run deploy from within the app's parent directory (e.g. `continia deploy <envId> Cloud` from the `DocumentOutput` dir). Passing full absolute paths like `U:\Git\...\DocumentOutput\Cloud` fails with "No app.json found."
-- **`--all` deploys too much** — `--all --workspace-root` discovers all apps in the workspace including BC base apps (209+ apps in DO.Support). Deploy specific apps instead of using `--all`.
-
-## Common Pattern: Fix-and-Deploy
-
-1. Fix the AL code
-2. `continia deploy <envId> <appPath> --json`
-3. If compile fails, fix errors and retry
-4. Once published, invoke `continia-test` to verify
+Compiler: the CLI uses `alc` from the newest AL VS Code extension (`~/.vscode/extensions/ms-dynamics-smb.al-*`), so analyzers match it. `CONTINIA_ALC_PATH` overrides it. Without the extension it falls back to `al compile` and warns that analyzers may fail to load. Analyzers listed in `al.codeAnalyzers` of `<app>/.vscode/settings.json` are loaded (`${CodeCop}`, `${UICop}`, `${AppSourceCop}`, `${PerTenantExtensionCop}`, `${analyzerFolder}...`); missing DLLs are skipped with a warning.

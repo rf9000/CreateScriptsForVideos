@@ -1,458 +1,132 @@
 # Banking Demo Management Codeunit Catalog
 
-> **⚠️ DO NOT CALL these codeunits directly from generated demo extensions.** They are `Access = Internal` in the `banking-demo` app, which has no `internalsVisibleTo`. Use this catalog as a **field reference** — it tells you which fields to set on each table — then use direct `Record.Init/Insert` in generated code.
+A field reference for the tables the `banking-demo` app populates. Each entry's parameter list
+tells you which fields matter for that table. The codeunits are internal to banking-demo, which
+grants no internal access to other apps, so the PTE can't call them; write direct
+`Init`/`Insert` code that sets the same fields.
 
-**Source directory:** `banking-demo/General/Codeunits/Management/`
+Source directory: `banking-demo/General/Codeunits/Management/`. Open the file when you need field
+types or the exact assignment logic.
 
----
+"Upsert" means the procedure inserts or modifies; "skip if exists" means it exits when the record
+is already there (the PTE's idempotent pattern). Procedures that use `Validate` pull defaults from
+master data, which a direct assignment won't do; set those fields yourself or call `Validate` in
+the PTE.
 
-## Bank Account
+## Bank Account — `CTS-CBAD Bank Account Mgt.` (72281972), `BankAccountMgt.Codeunit.al`
 
-**Codeunit:** `CTS-CBAD Bank Account Mgt.` (72281972)
-**File:** `banking-demo/General/Codeunits/Management/BankAccountMgt.Codeunit.al`
+- **InsertBankAccount**(No, Name, SearchName, Address, City, BankAccountNo, PostingGroup,
+  CurrencyCode, CountryCode, PostCode, BranchCode, IBAN: Code[34], SWIFT: Code[11], CreditorNo).
+  Tables: Bank Account, plus CTS-CB Bank Information (created when an IBAN is given). Upsert.
+- **InsertBankAccountPostingGroup**(PostingGroup, GLAccountNo). Table: Bank Account Posting Group.
+  Upsert.
 
-### InsertBankAccount
-```
-InsertBankAccount(
-    No: Code[20];
-    Name: Text[100];
-    SearchName: Text[100];
-    Address: Text[100];
-    City: Text[30];
-    BankAccountNo: Code[20];
-    PostingGroup: Code[20];
-    CurrencyCode: Code[10];
-    CountryCode: Code[10];
-    PostCode: Code[20];
-    BranchCode: Code[20];
-    IBAN: Code[34];
-    SWIFT: Code[11];
-    CreditorNo: Code[20]
-)
-```
-**Tables:** Bank Account, CTS-CB Bank Information (auto-created when IBAN provided)
-**Pattern:** Upsert (Insert or Modify)
+## Customer — `CTS-CBAD Customer Mgt.` (72281971), `CustomerMgt.Codeunit.al`
 
-### InsertBankAccountPostingGroup
-```
-InsertBankAccountPostingGroup(
-    PostingGroup: Code[20];
-    GLAccountNo: Code[20]
-)
-```
-**Table:** Bank Account Posting Group
-**Pattern:** Upsert
+- **InsertCustomer**(No, Name, SearchName, Address, City, CustomerPostingGroup, CurrencyCode,
+  PaymentTermsCode, InvoiceDiscCode, CountryRegionCode, PaymentMethodCode, GenBusPostingGroup,
+  PostCode, VATBusPostingGroup, PreferredBankAccountCode, ContactType: Text[50], BalAccountNo,
+  SkipPayment: Boolean). Table: Customer. Upsert; fires `OnBeforeInsertCustomer`.
+- **InsertCustomerBankAccount**(CustomerNo, BankAccountCode, BankName, Name2, Address, Address2,
+  City, PostCode, BankBranchNo, BankAccountNo: Text[30], TransitNo, CurrencyCode,
+  CountryRegionCode, County, IBAN: Code[50], SWIFTCode, BankClearingCode, VerifyAccount: Boolean).
+  Table: Customer Bank Account, plus change log entries when VerifyAccount is true. Upsert.
+- **InsertSEPADirectDebitMandate**(MandateID, CustomerNo, CustomerBankAccountCode, ValidFrom,
+  ValidTo, DateOfSignature, TypeOfPayment: Option, Blocked, ExpectedNumberOfDebits, DebitCounter,
+  NoSeries, Closed, IgnoreExpectedNumberOfDebits). Table: SEPA Direct Debit Mandate. A Text
+  overload `Evaluate`s the same values.
 
----
+## Vendor — `CTS-CBAD Vendor Mgt.` (72281964), `VendorMgt.Codeunit.al`
 
-## Customer
+- **InsertVendor**(No, Name, SearchName, Address, Address2, City, Contact, TerritoryCode,
+  VendorPostingGroup, CurrencyCode, PaymentTermsCode, InvoiceDiscCode, CountryRegionCode,
+  PayToVendorNo, PaymentMethodCode, ApplicationMethod: Text[50], GenBusPostingGroup, PostCode,
+  VATBusPostingGroup, PreferredBankAccountCode, AllowSummarizingPayments: Boolean,
+  CompressRemittanceText: Boolean, CostType: Text, BalAccountNo, CreditorNo, PmtRefTemplate,
+  SkipPayments: Boolean). Table: Vendor. Skip if exists; fires `OnBeforeInsertVendor`. Three
+  shorter overloads exist (Text-based `Evaluate`, and without SkipPayments). CostType is resolved
+  from its caption through `CTS-CBAD Field Management`.
+- **InsertVendorBankAccount**(VendorNo, BankAccountCode, BankName, Address, City, PostCode,
+  PhoneNo, BankBranchNo, BankAccountNo: Text[30], CurrencyCode, CountryRegionCode, County,
+  IBAN: Code[50], SWIFTCode, BankClearingCode, BankClearingStandard, VerifyAccount: Boolean).
+  Table: Vendor Bank Account, plus change log entries when VerifyAccount is true. Skip if exists.
 
-**Codeunit:** `CTS-CBAD Customer Mgt.` (72281971)
-**File:** `banking-demo/General/Codeunits/Management/CustomerMgt.Codeunit.al`
+## G/L Account — `CTS-CBAD G/L Account Mgt.` (72281973), `GLAccountMgt.Codeunit.al`
 
-### InsertCustomer
-```
-InsertCustomer(
-    No: Code[20];
-    Name: Text[100];
-    SearchName: Text[100];
-    Address: Text[100];
-    City: Text[30];
-    CustomerPostingGroup: Code[20];
-    CurrencyCode: Code[10];
-    PaymentTermsCode: Code[10];
-    InvoiceDiscCode: Code[20];
-    CountryRegionCode: Code[10];
-    PaymentMethodCode: Code[10];
-    GenBusPostingGroup: Code[20];
-    PostCode: Code[20];
-    VATBusPostingGroup: Code[20];
-    PreferredBankAccountCode: Code[20];
-    ContactType: Text[50];
-    BalAccountNo: Code[20];
-    SkipPayment: Boolean
-)
-```
-**Table:** Customer
-**Pattern:** Upsert, fires OnBeforeInsertCustomer event
+- **InsertGLAccount**(No, Name, SearchName, AccountType, AccountCategory, IncomeBalance,
+  DebitCredit, DirectPosting: Boolean, GenPostingType, GenBusPostingGroup, GenProdPostingGroup,
+  VATBusPostingGroup, VATProdPostingGroup, ExchangeRateAdjustment, AccountSubcategoryEntryNo:
+  Integer, APIAccountType). Table: G/L Account. Upsert. Enum and option fields arrive as Text and
+  are `Evaluate`d; in the PTE, assign the enum identifiers directly.
 
-### InsertCustomerBankAccount
-```
-InsertCustomerBankAccount(
-    CustomerNo: Code[20];
-    BankAccountCode: Code[20];
-    BankName: Text[100];
-    Name2: Text[50];
-    Address: Text[100];
-    Address2: Text[50];
-    City: Text[30];
-    PostCode: Code[20];
-    BankBranchNo: Code[20];
-    BankAccountNo: Text[30];
-    TransitNo: Text[20];
-    CurrencyCode: Code[10];
-    CountryRegionCode: Code[10];
-    County: Text[30];
-    IBAN: Code[50];
-    SWIFTCode: Code[20];
-    BankClearingCode: Text[50];
-    VerifyAccount: Boolean
-)
-```
-**Table:** Customer Bank Account (+ change log entries if VerifyAccount = true)
-**Pattern:** Upsert
+## Sales documents — `CTS-CBAD Sales Mgt.` (72281942), `SalesMgt.Codeunit.al`
 
-### InsertSEPADirectDebitMandate (typed overload)
-```
-InsertSEPADirectDebitMandate(
-    MandateID: Code[20];
-    CustomerNo: Code[20];
-    CustomerBankAccountCode: Code[20];
-    ValidFrom: Date;
-    ValidTo: Date;
-    DateOfSignature: Date;
-    TypeOfPayment: Option;
-    Blocked: Boolean;
-    ExpectedNumberOfDebits: Integer;
-    DebitCounter: Integer;
-    NoSeries: Code[20];
-    Closed: Boolean;
-    IgnoreExpectedNumberOfDebits: Boolean
-)
-```
-**Table:** SEPA Direct Debit Mandate
-**Note:** Also has a Text-parameter overload that Evaluate()s the values
+- **InsertSalesHeader**(DocumentType: Enum "Sales Document Type", DocumentNo, CustomerNo,
+  PostingDate, ExternalDocumentNo: Code[35], PaymentTermsCode, DueDate, PaymentReference: Code[35],
+  PaymentMethodCode, RecipientBankAccount, CreditorNo). Table: Sales Header. Skip if the header or
+  a matching Cust. Ledger Entry exists; uses `Validate`.
+- **InsertSalesLine**(DocumentType, DocumentNo, LineNo, CustomerNo, Type: Enum "Sales Line Type",
+  No, LocationCode, ShipmentDate, Description, Description2, UnitOfMeasure, Quantity, UnitPrice,
+  VATPercent, LineDiscountPercent, LineDiscountAmount). Table: Sales Line. Skip if exists; uses
+  `Validate`.
+- **PostDocuments**(DocumentType, DocNoList: List of [Code[20]]) posts through Sales-Post.
 
----
+## Purchase documents — `CTS-CBAD Purchase Mgt.` (72281965), `PurchaseMgt.Codeunit.al`
 
-## Vendor
+- **InsertPurchaseHeaderSimplified**(DocumentType: Enum "Purchase Document Type", DocumentNo,
+  VendorNo, PostingDate, ExternalDocumentNo, PaymentTermsCode, DueDate, PaymentReference,
+  PaymentMethodCode, RecipientBankAccount, CreditorNo). Table: Purchase Header. Skip if exists;
+  uses `Validate` and inherits the rest from the vendor. Prefer this field set over the DE-style
+  `InsertPurchaseHeader` with 50+ parameters.
+- **InsertPurchaseLineSimplified**(DocumentType, DocumentNo, LineNo, VendorNo,
+  Type: Enum "Purchase Line Type", No, LocationCode, ShipmentDate, Description, Description2,
+  UnitOfMeasure, Quantity, UnitPrice, VATPercent, LineDiscountPercent, LineDiscountAmount,
+  EnableDirectUnitCostValidation: Boolean). Table: Purchase Line. Skip if exists; uses `Validate`.
+- **PostDocuments**(DocumentType, DocNoList) releases, then posts each document.
 
-**Codeunit:** `CTS-CBAD Vendor Mgt.` (72281964)
-**File:** `banking-demo/General/Codeunits/Management/VendorMgt.Codeunit.al`
+## General journal lines — `CTS-CBAD Journal Line Mgt.` (72281945), `JournalLineMgt.Codeunit.al`
 
-### InsertVendor (full overload)
-```
-InsertVendor(
-    No: Code[20];
-    Name: Text[100];
-    SearchName: Text[100];
-    Address: Text[100];
-    Address2: Text[50];
-    City: Text[30];
-    Contact: Text[50];
-    TerritoryCode: Code[10];
-    VendorPostingGroup: Code[20];
-    CurrencyCode: Code[10];
-    PaymentTermsCode: Code[10];
-    InvoiceDiscCode: Code[20];
-    CountryRegionCode: Code[10];
-    PayToVendorNo: Code[20];
-    PaymentMethodCode: Code[10];
-    ApplicationMethod: Text[50];
-    GenBusPostingGroup: Code[20];
-    PostCode: Code[20];
-    VATBusPostingGroup: Code[20];
-    PreferredBankAccountCode: Code[20];
-    AllowSummarizingPayments: Boolean;
-    CompressRemittanceText: Boolean;
-    CostType: Text;
-    BalAccountNo: Code[20];
-    CreditorNo: Code[20];
-    PmtRefTemplate: Code[20];
-    SkipPayments: Boolean
-)
-```
-**Table:** Vendor
-**Pattern:** Skip if exists (Get then exit), fires OnBeforeInsertVendor event
-**Note:** Has 3 overload variants with fewer parameters (Text-based Evaluate and without SkipPayments)
+- **InsertGeneralJournalLine**(JournalTemplateName, JournalBatchName, LineNo, AccountType: Text,
+  AccountNo, PostingDate, DocumentType: Text, DocumentNo, Description, BalAccountNo, Amount,
+  DebitAmount, CreditAmount, AmountLCY, ... 50+ more). Table: Gen. Journal Line. Skip if the line
+  or a matching ledger entry exists; assigns fields directly. Read the file and pick only the
+  fields your journal lines need.
 
-### InsertVendorBankAccount
-```
-InsertVendorBankAccount(
-    VendorNo: Code[20];
-    BankAccountCode: Code[20];
-    BankName: Text[100];
-    Address: Text[100];
-    City: Text[30];
-    PostCode: Code[20];
-    PhoneNo: Text[30];
-    BankBranchNo: Code[20];
-    BankAccountNo: Text[30];
-    CurrencyCode: Code[10];
-    CountryRegionCode: Code[10];
-    County: Text[30];
-    IBAN: Code[50];
-    SWIFTCode: Code[20];
-    BankClearingCode: Text[50];
-    BankClearingStandard: Text[50];
-    VerifyAccount: Boolean
-)
-```
-**Table:** Vendor Bank Account (+ change log entries if VerifyAccount = true)
-**Pattern:** Skip if exists
+## Bank transactions — `CTS-CBAD Transaction Data Mgt.` (72281967), `TransactionDataMgt.Codeunit.al`
 
----
+- **CreateAccStmntTransactions**(var BankAccount). Tables: CTS-PI Bank Transac. Header, Line, and
+  Dtl. Creates the header, lines from the `CTS-CBAD Export Data` table, then fixed DK transactions,
+  and calculates balances.
+- **CreateTransactions**(var BankAccount) creates CAMT.054-style transactions.
 
-## G/L Account
+These are multi-step operations that depend on Export Data records and DK localized data, so treat
+the tables as COMPLEX: insert a minimal header and lines directly, or rely on `banking-demo`.
 
-**Codeunit:** `CTS-CBAD G/L Account Mgt.` (72281973)
-**File:** `banking-demo/General/Codeunits/Management/GLAccountMgt.Codeunit.al`
+## Approval flows — `CTS-CBAD Create Pmt.App.Flow` (72281948), `CreatePmtAppFlow.Codeunit.al`
 
-### InsertGLAccount
-```
-InsertGLAccount(
-    No: Code[20];
-    Name: Text[100];
-    SearchName: Text[100];
-    AccountType: Text[50];
-    AccountCategory: Text[50];
-    IncomeBalance: Text[50];
-    DebitCredit: Text[50];
-    DirectPosting: Boolean;
-    GenPostingType: Text[50];
-    GenBusPostingGroup: Code[20];
-    GenProdPostingGroup: Code[20];
-    VATBusPostingGroup: Code[20];
-    VATProdPostingGroup: Code[20];
-    ExchangeRateAdjustment: Text[50];
-    AccountSubcategoryEntryNo: Integer;
-    APIAccountType: Text[50]
-)
-```
-**Table:** G/L Account
-**Pattern:** Upsert
-**Note:** Uses Evaluate() for enum/option fields (AccountType, AccountCategory, etc.)
+- **CreatePmtAppFlows**(ApprovalFlowCode: Code[10], FlowDescription: Text[50],
+  SendAppRequestTo: Text[30], RequiredNoOfApproves: Integer,
+  UserDictionary: Dictionary of [Text[50], Text[100]]). Tables: CTS-AW Approval Flow, CTS-AW
+  Approval Flow Line, User Setup, CTS-CB Payment Journal Setup. Creates the flow, one line per user,
+  sets the user's email in User Setup, and creates and assigns the workflow.
 
----
+## G/L Setup — `CTS-CBAD G/L Setup Mgt.` (72281974), `GLSetupMgt.Codeunit.al`
 
-## Sales Documents
+- **UpdateGLSetup**(PmtDiscGracePeriod: Text, MaxPmtToleranceAmtText: Text). Modifies the
+  existing General Ledger Setup record.
 
-**Codeunit:** `CTS-CBAD Sales Mgt.` (72281942)
-**File:** `banking-demo/General/Codeunits/Management/SalesMgt.Codeunit.al`
+## Utility codeunits
 
-### InsertSalesHeader (typed overload)
-```
-InsertSalesHeader(
-    DocumentType: Enum "Sales Document Type";
-    DocumentNo: Code[20];
-    CustomerNo: Code[20];
-    PostingDate: Date;
-    ExternalDocumentNo: Code[35];
-    PaymentTermsCode: Code[10];
-    DueDate: Date;
-    PaymentReference: Code[35];
-    PaymentMethodCode: Code[10];
-    RecipientBankAccount: Code[20];
-    CreditorNo: Code[20]
-)
-```
-**Table:** Sales Header
-**Pattern:** Skip if exists or if matching Cust. Ledger Entry exists. Uses Validate.
+- `CTS-CBAD Create BankAccChgLog` (72281961) writes bank account change log entries; the customer
+  and vendor codeunits call it when VerifyAccount is true.
+- `CTS-CBAD Field Management` (72281968) resolves enum values from captions.
 
-### InsertSalesLine (typed overload)
-```
-InsertSalesLine(
-    DocumentType: Enum "Sales Document Type";
-    DocumentNo: Code[20];
-    LineNo: Integer;
-    CustomerNo: Code[20];
-    Type: Enum "Sales Line Type";
-    No: Code[20];
-    LocationCode: Code[10];
-    ShipmentDate: Date;
-    Description: Text[100];
-    Description2: Text[50];
-    UnitOfMeasure: Code[10];
-    Quantity: Decimal;
-    UnitPrice: Decimal;
-    VATPercent: Decimal;
-    LineDiscountPercent: Decimal;
-    LineDiscountAmount: Decimal
-)
-```
-**Table:** Sales Line
-**Pattern:** Skip if exists. Uses Validate.
+## Tables without a management codeunit
 
-### PostDocuments
-```
-PostDocuments(
-    DocumentType: Enum "Sales Document Type";
-    DocNoList: List of [Code[20]]
-)
-```
-Posts all documents in the list using Sales-Post codeunit.
-
----
-
-## Purchase Documents
-
-**Codeunit:** `CTS-CBAD Purchase Mgt.` (72281965)
-**File:** `banking-demo/General/Codeunits/Management/PurchaseMgt.Codeunit.al`
-
-### InsertPurchaseHeaderSimplified (typed overload, recommended for generated code)
-```
-InsertPurchaseHeaderSimplified(
-    DocumentType: Enum "Purchase Document Type";
-    DocumentNo: Code[20];
-    VendorNo: Code[20];
-    PostingDate: Date;
-    ExternalDocumentNo: Code[35];
-    PaymentTermsCode: Code[10];
-    DueDate: Date;
-    PaymentReference: Code[35];
-    PaymentMethodCode: Code[10];
-    RecipientBankAccount: Code[20];
-    CreditorNo: Code[20]
-)
-```
-**Table:** Purchase Header
-**Pattern:** Skip if exists. Uses Validate. Inherits values from vendor master data.
-**Note:** Also has a full DE-style `InsertPurchaseHeader` with 50+ parameters (avoid for generated code).
-
-### InsertPurchaseLineSimplified (typed overload, recommended for generated code)
-```
-InsertPurchaseLineSimplified(
-    DocumentType: Enum "Purchase Document Type";
-    DocumentNo: Code[20];
-    LineNo: Integer;
-    VendorNo: Code[20];
-    Type: Enum "Purchase Line Type";
-    No: Code[20];
-    LocationCode: Code[10];
-    ShipmentDate: Date;
-    Description: Text[100];
-    Description2: Text[50];
-    UnitOfMeasure: Code[10];
-    Quantity: Decimal;
-    UnitPrice: Decimal;
-    VATPercent: Decimal;
-    LineDiscountPercent: Decimal;
-    LineDiscountAmount: Decimal;
-    EnableDirectUnitCostValidation: Boolean
-)
-```
-**Table:** Purchase Line
-**Pattern:** Skip if exists. Uses Validate.
-
-### PostDocuments
-```
-PostDocuments(
-    DocumentType: Enum "Purchase Document Type";
-    DocNoList: List of [Code[20]]
-)
-```
-Posts all documents in the list. Sets status to Released before posting.
-
----
-
-## General Journal Lines
-
-**Codeunit:** `CTS-CBAD Journal Line Mgt.` (72281945)
-**File:** `banking-demo/General/Codeunits/Management/JournalLineMgt.Codeunit.al`
-
-### InsertGeneralJournalLine
-```
-InsertGeneralJournalLine(
-    JournalTemplateName: Code[10];
-    JournalBatchName: Code[10];
-    LineNo: Integer;
-    AccountType: Text[50];
-    AccountNo: Code[20];
-    PostingDate: Date;
-    DocumentType: Text[50];
-    DocumentNo: Code[20];
-    Description: Text[100];
-    BalAccountNo: Code[20];
-    Amount: Decimal;
-    DebitAmount: Decimal;
-    CreditAmount: Decimal;
-    AmountLCY: Decimal;
-    ... (50+ additional parameters)
-)
-```
-**Table:** Gen. Journal Line
-**Pattern:** Skip if exists or if matching ledger entry exists. Direct field assignment.
-**Note:** Very large parameter list. Best used for detailed journal line creation only.
-
----
-
-## Bank Account Transactions
-
-**Codeunit:** `CTS-CBAD Transaction Data Mgt.` (72281967)
-**File:** `banking-demo/General/Codeunits/Management/TransactionDataMgt.Codeunit.al`
-
-### CreateAccStmntTransactions
-```
-CreateAccStmntTransactions(var BankAccount: Record "Bank Account")
-```
-**Tables:** CTS-PI Bank Transac. Header, CTS-PI Bank Transac. Line, CTS-PI Bank Transac. Dtl.
-**Pattern:** Creates header, then transaction lines from CTS-CBAD Export Data table, then fixed transactions from DK data. Calculates balances.
-
-### CreateTransactions
-```
-CreateTransactions(var BankAccount: Record "Bank Account")
-```
-Creates CAMT.054-style transaction records.
-
-**Note:** These procedures depend on existing Export Data records and localized data (DK). They are complex multi-step operations, not simple inserts.
-
----
-
-## Approval Flows
-
-**Codeunit:** `CTS-CBAD Create Pmt.App.Flow` (72281948)
-**File:** `banking-demo/General/Codeunits/Management/CreatePmtAppFlow.Codeunit.al`
-
-### CreatePmtAppFlows
-```
-CreatePmtAppFlows(
-    ApprovalFlowCode: Code[10];
-    FlowDescription: Text[50];
-    SendAppRequestTo: Text[30];
-    RequiredNoOfApproves: Integer;
-    UserDictionary: Dictionary of [Text[50], Text[100]]
-)
-```
-**Tables:** CTS-AW Approval Flow, CTS-AW Approval Flow Line, User Setup, CTS-CB Payment Journal Setup
-**Pattern:** Creates flow, flow lines per user, sets email on user setup, creates and assigns workflow.
-
----
-
-## G/L Setup
-
-**Codeunit:** `CTS-CBAD G/L Setup Mgt.` (72281974)
-**File:** `banking-demo/General/Codeunits/Management/GLSetupMgt.Codeunit.al`
-
-### UpdateGLSetup
-```
-UpdateGLSetup(
-    PmtDiscGracePeriod: Text;
-    MaxPmtToleranceAmtText: Text
-)
-```
-**Table:** General Ledger Setup
-**Pattern:** Modify existing record.
-
----
-
-## Utility Codeunits (Not Insert Procedures)
-
-### CTS-CBAD Create BankAccChgLog (72281961)
-Creates bank account change log entries. Called internally by CustomerMgt and VendorMgt when VerifyAccount = true.
-
-### CTS-CBAD Field Management (72281968)
-Utility for resolving enum values from captions. Called by VendorMgt for CostType field.
-
----
-
-## Tables NOT Covered by Management Codeunits
-
-These tables require **direct Record.Init/Insert** in generated code:
-
-| Table | Notes |
-|-------|-------|
-| CTS-PI Search Rule | Use direct Insert (see `banking-demo/General/Codeunits/NonLocalized/CreateSearchRules.Codeunit.al`) |
-| CTS-PI Split Rule Header / Line | Use direct Insert (see `banking-demo/General/Codeunits/NonLocalized/CreateSplitRules.Codeunit.al`) |
-| CTS-CB Payment Journal Setup | Use direct Insert (see `banking-demo/General/Codeunits/DK/CreatePJnlSetupDK.Codeunit.al`) |
-| CTS-CB Bank System / Bank Setup | Complex import flow (see `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al`) |
-| Payment Terms / Customer Posting Group / other BC setup | Assume pre-populated in demo company |
+| Table | Model on |
+|-------|----------|
+| CTS-PI Search Rule | `banking-demo/General/Codeunits/NonLocalized/CreateSearchRules.Codeunit.al` |
+| CTS-PI Split Rule Header / Line | `banking-demo/General/Codeunits/NonLocalized/CreateSplitRules.Codeunit.al` |
+| CTS-CB Payment Journal Setup | `banking-demo/General/Codeunits/DK/CreatePJnlSetupDK.Codeunit.al` |
+| CTS-CB Bank System / Bank Setup | `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al` (normally an import flow; COMPLEX) |
+| Payment Terms, Customer Posting Group, other BC setup | None; SETUP tables already exist in the demo company |

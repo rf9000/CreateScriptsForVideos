@@ -1,212 +1,120 @@
 ---
 name: demo-data-orchestrator
-description: "End-to-end orchestrator for demo video preparation: researches data dependencies, generates AL demo data code, and produces YAML demo specs. Use when the user asks to: create a complete demo package, prepare demo data and recording spec, generate demo data for a feature, or orchestrate demo creation. Triggers on: 'demo orchestrator', 'demo package', 'prepare demo', 'demo data and spec', 'full demo', 'demo data'. For YAML-only spec generation without data research, use demo-spec-generator instead."
+description: "Builds a demo package for a Continia Banking feature: researches the data the demo flow needs, writes a demo-data PTE (AL extension that seeds the data on install), and writes a Markdown recording script. Use it when a feature demo needs seeded data; for a script alone, use demo-spec-generator."
 ---
 
 # Demo Data Orchestrator
 
-Coordinates end-to-end demo preparation: researches what data a feature demo needs, generates a deployable AL extension (PTE) that creates data on install, then generates the human-readable Markdown recording script.
+Researches what data a feature demo needs, generates a deployable AL extension (PTE) that creates
+that data on install, then writes the human-readable Markdown recording script.
 
-**Outputs** (write to the output directories the caller provides; NEVER write into a read-only source repo):
-1. Deployable AL extension (PTE) folder → `<pte-output-dir>/` (contains `app.json`, `.vscode/launch.json`, `InstallDemoData.Codeunit.al`)
-2. Markdown recording script → `<output-dir>/<feature-kebab-case>.md`
+The skill runs unattended inside the pipeline's generate stage. Make reasonable decisions yourself
+and record them as assumptions; nobody is available to answer questions. The pipeline invariants
+apply (read-only continia-banking repo, internal access via the Internal Access dependency, one PTE
+in place, no presenter prerequisites).
 
-**Relationship to other skills:** The existing `demo-spec-generator` skill remains independently callable for cases where demo data already exists. This orchestrator uses Phase 4 of its workflow by referencing `demo-spec-generator` steps 4-7.
+**Outputs**, at the paths the caller provides:
+1. The PTE folder: `app.json`, `.vscode/launch.json`, `InstallDemoData.Codeunit.al` written directly
+   into it.
+2. The recording script, written to the recording script file path the caller gives.
+
+Compiling and publishing the PTE is a separate deploy stage; this skill only writes the files.
 
 ## Workflow
 
-Follow these 5 phases in order.
+Six phases, in order.
 
-**Automation mode:** When invoked by an agent or with sufficient arguments (starting page ID, feature context, and data requirements clear from context), run all phases without interactive prompts. Only ask questions when arguments are missing AND inference from context fails. Log assumptions instead of blocking on confirmations.
+### Phase 1 — Parse and discover
 
----
+Follow `demo-spec-generator` steps 1-3 to identify the feature and its starting page. Find pages
+with the LSP tool (`workspaceSymbol`, then `documentSymbol` for the numeric page ID), falling back
+to `Grep` and `Glob` (`**/*<feature>*.al`). Record each page's file path, numeric ID, and caption.
+If the brief is vague, pick the happy path and log that as an assumption.
 
-### Phase 1 — Parse & Discover
+### Phase 2 — Research data dependencies
 
-**Goal:** Identify the feature and its starting page.
+Follow `references/data-research-strategy.md`. In outline:
 
-This phase is identical to `demo-spec-generator` steps 1-3. Follow those steps exactly:
+1. Get the page's SourceTable, then the table's fields and `TableRelation` dependencies.
+2. Classify each related table as COVERED, SETUP, STANDARD-BC, CUSTOM, or COMPLEX (definitions in
+   the strategy file). Everything except SETUP is created by direct `Init`/`Insert` in the PTE.
+3. Recurse up to depth 3.
+4. Trace the code path of every action the demo clicks. Static table relations miss runtime
+   validations (`Error`, `TestField`, `if not Get() then Error`), and those are the usual reason a
+   demo fails on camera.
+5. Mine the `*-test/` apps: Library `Create*()` procedures are compiler- and runtime-validated
+   field references, and Given-When-Then test methods map onto demo setup, action, and result.
+6. Topologically sort the tables so dependencies are created first.
+7. Design the initial data state for visual contrast: the first action must produce a visible
+   change, toggles start in the opposite state, resets start customized.
+8. Log the data map (tables, classifications, creation order, chosen initial state and the demo
+   step that drove it) as assumptions.
 
-1. **Parse the request** — Extract feature name, specificity level, app/country context from the user's message. If vague, default to a happy-path flow and state the assumption.
+### Phase 3 — Generate the PTE
 
-2. **Discover the feature** — Search for matching pages using:
-   - `workspaceSymbol` or `find_symbol` — pages matching the feature name
-   - `search_for_pattern` — broaden if symbol search returns nothing
-   - `Glob` with `**/*<feature>*.al` — fallback file search
+Follow `references/al-template.md` for the file contents. The essentials:
 
-   Record for each discovered page: file path, **numeric page ID** (from `documentSymbol`), page caption.
+- `app.json` depends on Continia Banking (`83461f48-dd16-49ea-b00c-e656830c640f`) and on Continia
+  Banking Internal Access (`6e549e35-d1b2-4878-a37a-a736c22f35bf`), plus any other Continia app
+  whose objects the codeunit references. Generate the `id` with
+  `bun -e "console.log(crypto.randomUUID())"`; a zero GUID fails with AL1053. Copy `platform`,
+  `application`, and the Continia Banking version from `base-application/app.json` so the PTE
+  compiles against the same symbols.
+- The name is `"Continia Demo Data - <Feature Name>"`; the pipeline requires the "Continia" prefix.
+- The install codeunit (ID 50000, range 50000-50099) runs `CreateDemoData()` then `VerifyDemoData()`
+  from `OnInstallAppPerCompany()`. `VerifyDemoData()` re-reads every seeded record and raises an
+  error naming the first missing one, so a broken PTE fails at publish time instead of producing an
+  empty demo.
+- Every insert is idempotent (`if not Get() then Init/Insert`), because a failed install is retried
+  by republishing.
+- Every hardcoded value is a Label with a Comment, grouped by entity.
+- Use the management-codeunit catalog only as a field reference. The banking-demo codeunits are
+  internal to that app and cannot be called from the PTE.
+- Fields from Continia table extensions (field IDs 71553575 and up) are set through RecordRef,
+  because the compiler resolves `Record` against the base table symbol.
+- Use enum AL identifiers (`PAIN001`), not captions (`pain.001`); check the enum's `.al` file.
+- Create only what the flow touches: 2-3 records per entity, with country-appropriate sample values.
+- COMPLEX tables (bank systems, authentication) are created directly in the PTE, modelled on
+  `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al`. When the data is baseline
+  demo-company data the PTE cannot reasonably reproduce, rely on the deploy stage publishing
+  `banking-demo` and report `needsBankingDemo: true`.
 
-3. **Determine starting page** — Follow `demo-spec-generator` Step 3 resolution order: use argument if provided → infer from context → ask only as last resort. In automation mode, infer and log the assumption.
+Revisions edit the existing files in place. Log a short summary of what the PTE creates.
 
----
+### Phase 4 — Write the recording script
 
-### Phase 2 — Research Data Dependencies
+Follow `demo-spec-generator` steps 4-7, writing the script to the recording script file path the
+caller gave.
 
-**Goal:** Discover what tables and records must exist for the demo flow to work.
+The script's "Before you record" section describes the state the pipeline has already set up (for
+example, "The demo company has bank accounts A and B with imported statement lines"). It never asks
+the presenter to install apps or create data, because the pipeline provisions the environment and
+publishes the PTE and `banking-demo` before recording.
 
-Read `references/data-research-strategy.md` for the full algorithm. Summary:
+### Phase 5 — Self-review (2-3 passes)
 
-1. **Extract SourceTable** from the target page(s) using `documentSymbol`.
+Re-read the script and the PTE against the AL code. Stop early when a pass finds nothing. Apply
+fixes directly to the files and log what changed and why.
 
-2. **Get table fields** — Navigate to the table via `goToDefinition`, use `documentSymbol` to enumerate fields with types.
-
-3. **Identify TableRelation dependencies** — Read the table `.al` file. For each field, find `TableRelation = "..."` properties. Build a dependency graph.
-
-4. **Classify dependencies** — Cross-reference against `references/management-codeunit-catalog.md`:
-   - **COVERED** — Has a management codeunit entry in the catalog → use the catalog as a **field reference** (which fields to set), then use direct Record.Init/Insert
-   - **SETUP** — Standard BC setup table → skip (assume pre-populated in demo company)
-   - **CUSTOM** — CTS-* table not in catalog → use direct Record.Init/Insert
-   - **COMPLEX** — Requires multi-step setup → flag for manual handling
-
-5. **Recurse** (max depth 3) — For COVERED and CUSTOM tables, repeat steps 2-4 on their own fields.
-
-6. **Trace action code paths (CRITICAL)** — For every action the demo will click, use LSP (`goToDefinition`, `outgoingCalls`) to trace the full call chain depth 2-3. Look for `Error()`, `TestField()`, and validation procedures that require records not visible from table relations. Flag any runtime dependency found this way. See `references/data-research-strategy.md` tip 9 for the full algorithm.
-
-7. **Mine automated tests for data and flow patterns** — Search the `*-test/` apps for tests that exercise the same feature area. See `references/data-research-strategy.md` "Mine Automated Tests" section for the full algorithm. Summary:
-
-   a. **Find relevant tests** — `Grep` for the target page name, source table name, or key action procedure names across `*-test/` directories. Also search `*-test/Libraries/` for Library codeunits that create data for the same tables.
-
-   b. **Read Library data-creation procedures** — Library codeunits (e.g., `CTS-CB Library Bank Account`, `CTS-PI Library Bank Recon.`) contain battle-tested `Create*()` procedures showing exactly which fields to set, in what order, with what dependencies. Use these as authoritative field references — they reflect real runtime requirements, not just table schema.
-
-   c. **Read test methods for flow patterns** — Test methods follow Given-When-Then, which maps to demo setup→action→result. The "Given" section reveals required data state, the "When" section reveals the exact action sequence, and the "Then" section shows what visible result to expect.
-
-   d. **Cross-reference with LSP findings** — Tests may reveal runtime dependencies that the static TableRelation trace and action code-path trace missed (e.g., setup records created in `Initialize()` that are needed but not directly related via TableRelation). Add any newly discovered dependencies to the data map.
-
-   e. **Extract sample values** — Library procedures often use realistic sample values (IBANs, bank codes, amounts) that are more meaningful than generated placeholders.
-
-8. **Topological sort** — Order tables so dependencies come first.
-
-9. **Design initial data state for visual contrast** — Walk through the demo spec steps and determine what data state each step expects. The initial data must be set so that:
-   - The **first action produces a visible change** for the viewer (e.g., if the demo clicks "All Direct", data must start in Manual state)
-   - **Toggle actions** start in the opposite state of what the action switches to
-   - **Reset/restore actions** start in a customized state so the reset is visible
-   - **Enable/disable flows** start with some records in the opposite state
-   - If multiple demo specs share the same data extension, find an initial state that works for all flows or note conflicts
-
-10. **Present or log data map** — Show discovered tables, their classifications, the creation order, **and the chosen initial data state with reasoning tied to the demo flow**. In interactive mode, ask the user to confirm or adjust before generating code. In automation mode, log the data map as assumptions and proceed.
-
----
-
-### Phase 3 — Generate Deployable Demo Data Extension
-
-**Goal:** Produce a complete, deployable AL extension folder that creates demo data automatically when installed on a BC environment.
-
-Read `references/al-template.md` for the exact structure. The output is a folder with three files:
-
-1. **`app.json`** — Extension manifest with:
-   - Dependency on Continia Banking (`83461f48-dd16-49ea-b00c-e656830c640f`)
-   - **Dependency on "Continia Banking Internal Access"** (`6e549e35-d1b2-4878-a37a-a736c22f35bf`, publisher "Continia Software Partner") — this grants the PTE access to the `Access = Internal` CTS-* tables/enums it needs. Do NOT edit base-application to gain internal access.
-   - Additional dependencies if referencing tables from other apps (Import, Export, etc.)
-   - ID range 50000-50099 (demo extension range)
-   - **Real GUID** as `id` — generate via `powershell -Command "[guid]::NewGuid().ToString()"` (zero GUID causes AL1053)
-   - **Platform/application versions** matching `base-application/app.json` (never hardcode)
-
-2. **`.vscode/launch.json`** — Minimal VS Code config (empty configurations)
-
-3. **`InstallDemoData.Codeunit.al`** — Install codeunit with:
-   - `Access = Internal`
-   - `Subtype = Install` — runs automatically on app install
-   - `Permissions = tabledata "..." = RIM` — declare ALL table permissions explicitly
-   - `OnInstallAppPerCompany()` trigger calls `CreateDemoData()` then `VerifyDemoData()`
-   - `CreateDemoData()` is a `local procedure` (only called from the trigger)
-   - `VerifyDemoData()` is a `local procedure` that re-reads EVERY seeded record (`Get()` for keyed records, `IsEmpty()` checks for ranges) and calls `Error()` naming the first missing one. A verification failure aborts the install, so a broken PTE fails at publish time instead of producing an empty demo. Every record `CreateDemoData()` inserts must have a matching verification check.
-   - Object ID 50000 (in the demo extension range)
-
-4. **Name format:** `"Continia Demo Data - <Feature Name>"` — the PTE name must always start with "Continia"
-
-5. **Labels for ALL values** — Every hardcoded value must be a Label with a Comment. Never use inline strings in procedure calls. Group labels by entity type.
-
-6. **Direct Insert for ALL tables** — Use the idempotent `if not Record.Get() then begin Record.Init(); ... Record.Insert(); end;` pattern. Do NOT call banking-demo management codeunits (they are `Access = Internal` with no `internalsVisibleTo`). Reference `management-codeunit-catalog.md` for which fields to set on each table.
-
-7. **Table extension fields** — Fields from table extensions (field IDs in Continia range 71553575+) must use the RecordRef pattern. See `al-template.md` → "Accessing Table Extension Fields".
-
-8. **Enum values** — Always verify enum AL identifiers (e.g., `PAIN001`) vs display captions (e.g., `pain.001`) using `documentSymbol` or reading the `.al` file. Never guess from captions.
-
-9. **Dependency order** — Call sub-procedures in topological order (tables with no deps first).
-
-10. **Country-aware sample values** — Use existing localized codeunits as templates:
-    - DK: `banking-demo/General/Codeunits/DK/CreateBankAccDK.Codeunit.al`
-    - DE: `banking-demo/General/Codeunits/DE/CreateBankAccDE.Codeunit.al`
-
-11. **Minimal data** — Only create records the demo flow actually touches. 2-3 records per entity type.
-
-12. **Complex setup — never punt to the user.** For flagged tables (bank system import, auth), create the records directly in the PTE (use the internal-access dependency to reach `Access = Internal` tables), modelling them on `banking-demo/General/Codeunits/NonLocalized/SetupBankAcc.Codeunit.al`. If the data is baseline demo-company data that the PTE can't reasonably reproduce, rely on the orchestrator publishing the `banking-demo` app to the environment (deploy step) — do NOT emit "must exist before recording" / "install X first" prerequisites.
-
-13. **Internal access via dependency (NOT internalsVisibleTo).** All CTS-CB tables/enums/codeunits are `Access = Internal`. The PTE gains access by depending on the **"Continia Banking Internal Access"** app (`6e549e35-d1b2-4878-a37a-a736c22f35bf`) declared in `app.json` (see step 1). Do **NOT** modify `base-application/app.json` or any other file in the read-only continia-banking repo.
-
-**Write** all three files (`app.json`, `.vscode/launch.json`, `InstallDemoData.Codeunit.al`) **directly into** the caller-provided PTE output directory — do NOT create a nested or feature-named subfolder, and produce exactly **one** extension (one `app.json`). If you revise the PTE, edit the files in place rather than creating a new folder. Never write into the read-only continia-banking repo.
-
-**Present** the generated code to the user for review before proceeding to Phase 4. In automation mode, log a summary of the generated extension and proceed directly.
-
----
-
-### Phase 4 — Generate the Markdown Recording Script
-
-**Goal:** Produce the human-readable Markdown recording script.
-
-**Follow `demo-spec-generator` steps 4-7 exactly.** Those steps are:
-
-- **Step 4 — Map Page Structure** — Extract captions, action areas, visibility conditions from the AL page files using LSP tools.
-- **Step 5 — Build the Recording Steps** — Read `demo-spec-generator/references/md-format.md` for the Markdown format. Assemble numbered steps in order (row clicks, tab clicks, action clicks, field inputs), each with Where / Do / You'll see.
-- **Step 6 — Build the Script Header & Narration Hints** — Header with feature name, starting page + ID, overview, prerequisites; plus per-step "Say:" narration hints.
-- **Step 7 — Write and Present** — Write the Markdown to the caller-provided output directory as `<feature-kebab-case>.md`.
-
-**Prerequisites describe the starting STATE, not chores.** The pipeline has already provisioned the
-environment, published the PTE, and (when needed) the `banking-demo` app — so the script's
-"Before you record" section states what is already true (e.g. "The demo company has bank accounts A
-and B with imported statement lines"), NOT setup the presenter must perform. Never write "install X"
-or "create Y first." The only things the presenter creates are on-camera demo steps.
-
----
-
-### Phase 5 — Self-Review (2-3 passes)
-
-**Goal:** Re-examine the generated Markdown script and data extension against the actual AL code to catch gaps, missed steps, and imprecise captions.
-
-Run **2-3 review passes**. Each pass re-reads the generated script and walks through the AL code path again with fresh eyes. Stop early if a pass finds nothing to fix.
-
-#### Pass 1 — Step completeness
-For each step in the script, re-read the AL trigger/action it corresponds to and verify:
-- **Missing intermediate steps** — Does the action open a dialog, StrMenu, or confirmation that needs extra clicks? Does a drilldown open a subpage that needs a close step?
-- **Missing navigation steps** — Are there tab clicks needed before non-promoted actions? Does the page load in view mode but need edit mode?
-- **Correct step order** — Walk through the steps as a user would. Does each step make sense given the page state left by the previous step?
-
-#### Pass 2 — Caption and value precision
-For each caption and field value in the script, verify against the AL source:
-- **Exact caption match** — Re-read the AL `Caption` property. Check for ellipsis, abbreviations, locked captions, HTML entities (`&nbsp;`).
-- **Correct page** — Is the page named in each step the one actually visible at that point? (e.g., after a drilldown, name the drilldown page, not the parent)
-- **Narration accuracy** — Does each "Say:" hint accurately describe what happens? Does it mention UI elements that actually exist?
-
-#### Pass 3 — Data dependency completeness (if data extension was generated)
-Re-trace every action's code path one more time, looking specifically for:
-- **Validation calls** (`TestField`, `Error`, `if not ... then Error`) that need records not yet in the data extension
-- **Visibility conditions** — Fields or groups with `Visible = SomeCondition` that might not be met
-- **State prerequisites** — Record statuses or flags that must be set for the flow to work
-- **Test cross-check** — Compare the data extension's table/field coverage against what automated tests create for the same feature. If tests create records that the data extension doesn't, investigate whether they're needed for the demo flow
-
-After each pass, apply fixes directly to the generated files. Log what was changed and why.
-
----
+1. **Step completeness.** For each step, re-read the AL trigger or action behind it. Look for
+   dialogs, StrMenus, and confirmations that need extra clicks; drilldowns that need a close step;
+   tab clicks before non-promoted actions; view mode versus edit mode; and step order as a user
+   would experience it.
+2. **Caption and value precision.** Match every caption against its AL `Caption` property
+   (ellipses, abbreviations, locked captions, `&nbsp;`). Make sure each step names the page that is
+   actually visible at that point (after a drilldown, the drilldown page) and that each "Say:" hint
+   describes UI that exists.
+3. **Data completeness.** Re-trace each action's code path for validations, visibility conditions,
+   and required statuses the PTE does not yet satisfy. Compare the PTE's table and field coverage
+   with what the tests create for the same feature, and add whatever the demo flow needs.
 
 ### Phase 6 — Summary
 
-Present a summary with:
-
-- **File paths** — Both output files with their locations
-- **Data created** — Tables populated, approximate record counts per table
-- **Pages covered** — Pages in the demo spec flow
-- **Review fixes** — What the self-review passes caught and corrected
-- **Assumptions** — Any assumptions made during research
-- **Gaps** — Tables needing manual setup, conditions not automatically resolvable
-- **Complex setup** — Any flagged items requiring manual intervention
-
----
-
-## What This Skill Does NOT Do
-
-- Record videos or capture the screen
-- Generate videos or handle TTS/subtitles
-- Modify existing AL source code in the main apps (continia-banking is read-only)
-- Handle login/authentication
-- Compile or deploy the extension to a BC environment (it generates the folder; compiling and publishing is a separate step)
-- Replace the `demo-spec-generator` skill (which remains independently callable)
+Report:
+- The paths of both outputs.
+- Tables populated and approximate record counts.
+- Pages covered by the script.
+- Fixes made during self-review.
+- Assumptions made during research and generation.
+- Gaps: known limitations of the demo (for example, an action skipped because its validation needs
+  data no insert can produce). These are limitations, not tasks for the presenter.

@@ -102,7 +102,9 @@ export function itemPaths(config: AppConfig, itemId: number): ItemPaths {
   const outDir = resolve(config.workspaceOutputDir, String(itemId));
   return {
     scriptPath: join(outDir, 'recording-script.md'),
-    ptePath: resolve(config.pteOutputDir, String(itemId)),
+    // One level below the item folder, so deploying from the PTE's parent gives
+    // each item its own workspace root (the CLI writes <root>/.alpackages there).
+    ptePath: resolve(config.pteOutputDir, String(itemId), 'pte'),
     statePath: join(outDir, 'pipeline-state.json'),
   };
 }

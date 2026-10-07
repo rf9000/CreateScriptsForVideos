@@ -15,7 +15,9 @@ Compile the PTE and publish it there.
    the seeding code is wrong: fix the data creation and redeploy, the same as a compile error.
 
 The CLI finds apps relative to the current directory and rejects some absolute app paths, so run
-`deps` and `deploy` from the PTE folder's parent with the folder name as the app path.
+`deps` and `deploy` from the PTE folder's parent (this item's own folder) with `pte` as the app path.
+`deps download` fetches direct dependencies only; if the compiler reports missing base or transitive
+packages, fetch them as the `continia-deps` skill describes.
 
 Don't create, start, stop, or delete environments; the pipeline owns the environment lifecycle and
 checks the installed apps after you finish.

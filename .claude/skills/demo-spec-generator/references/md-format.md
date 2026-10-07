@@ -1,6 +1,7 @@
-# Recording-Script Markdown Format Reference
+# Recording-Script Format
 
-This is the authoritative format for the human-readable recording script. The audience is a **content creator recording a demo video**. They read the script and perform each step live in a browser, narrating as they go. Be precise about **where they are**, **what to do**, and **what they should see** — the captions must match the AL `Caption` property exactly so the creator can find them on screen.
+The reader is a content creator performing each step live in a browser while narrating. Captions
+must match the AL `Caption` property so they can find each element on screen.
 
 ## File structure
 
@@ -8,19 +9,16 @@ This is the authoritative format for the human-readable recording script. The au
 # <Feature Name> — Recording Script
 
 ## Overview
-One or two sentences describing what this demo shows the viewer.
+One or two sentences on what this demo shows the viewer.
 
 ## Before you record (starting state)
-State only what is ALREADY true — the pipeline has provisioned the environment, published the PTE,
-and any needed demo app. Do NOT list setup the presenter must perform (no "install …", no "create …
-first"). If the presenter creates data, it belongs in Steps as an on-camera action, not here.
 - The demo environment is open and you are signed in.
 - <data that already exists, e.g. "The demo company has a bank account reconciliation with imported lines">
 - <expected starting state, e.g. "Statement lines are in the default fewer-columns mode">
 
 ## Starting point
 Open page **<Page Caption>** directly: `<bc-url>/?page=<pageId>`
-(Card/worksheet pages open in read-only view — click **Edit** first if you need to change values.)
+(Card and worksheet pages open in view mode — click **Edit** first if you need to change values.)
 
 ## Steps
 
@@ -33,38 +31,36 @@ Open page **<Page Caption>** directly: `<bc-url>/?page=<pageId>`
 ### 2. ...
 ```
 
-## Step-writing rules
+"Before you record" states only what is already true; the pipeline has provisioned the environment,
+the PTE, and any demo app, so it never asks the presenter to install or create anything.
 
-- **One UI interaction per step.** A click, or an input. If an action opens a dialog/StrMenu that needs an OK, that confirmation is its own step.
-- **Use exact captions.** Quote the AL `Caption` property verbatim, including any ellipsis (`Change Statement No....`). Never use the internal object/field name.
-- **List rows:** "Click the first row" (or Nth) — they click the primary-key link; lists have no Edit button.
-- **Action-bar tabs:** Non-promoted actions live under a tab. Tell them to open the tab first, then click the action. Mapping:
+## Step rules
 
-  | AL `area()` | Tab to open first | Needs a tab click? |
-  |---|---|---|
-  | `area(Promoted)` | (in the action bar already) | No |
-  | `area(Processing)` | "Home" / "Process" | Yes |
-  | `area(Navigation)` | "Page" / "Navigate" | Yes |
-  | `area(Reporting)` | "Report" | Yes |
-  | `area(Creation)` | "New" | Yes |
+- **One UI interaction per step**, so the recorder never has to hold two actions in mind. A dialog or
+  StrMenu choice that needs OK is its own step.
+- **Captions verbatim**, including any ellipsis (`Change Statement No....`), never the internal
+  object or field name. DemoPortal renders English regardless of locale, so write English captions.
+- **List rows:** "Click the first (Nth) row" — they click the primary-key link; lists have no Edit
+  button.
+- **Editing a card or worksheet:** include the step that switches to Edit mode before changing values.
+- **Non-promoted actions:** add a step to open the action-bar tab first, then click the action. A
+  nested group can need one more click; describe the full path.
 
-- **Wizards (NavigatePage):** Note that the wizard opens as a dialog; the creator can maximize it. Walk each wizard step.
-- **Toggle actions:** State the expected starting state in prerequisites so the first toggle produces a visible change.
-- **English captions:** DemoPortal renders English regardless of locale — write English text.
+  | AL `area()` | Where it appears |
+  |---|---|
+  | `area(Promoted)` | Directly in the action bar, no tab click |
+  | `area(Processing)` | "Home" / "Process" tab |
+  | `area(Navigation)` | "Page" / "Navigate" tab |
+  | `area(Reporting)` | "Report" tab |
+  | `area(Creation)` | "New" tab |
 
-## Narration ("Say:") guidance
+- **Wizards (NavigatePage):** the wizard opens as a dialog the creator can maximize; give each wizard
+  page its own steps.
+- **Toggle actions:** state the starting state under "Before you record" so the first toggle visibly
+  changes something.
 
-- UI-only steps (open a tab, click a row): one brief sentence.
-- The feature action (the teaching moment): a fuller explanation of what it does and what the viewer sees.
-- Speak naturally. No "click the button labeled…", no timestamps, no markup.
+## Narration ("Say:")
 
-## Checklist before submitting
-
-- [ ] Starting point gives a real numeric page ID.
-- [ ] Every caption matches the AL `Caption` property exactly (including ellipsis).
-- [ ] Non-promoted actions have a preceding "open the tab" step.
-- [ ] List navigation says "click the Nth row", not "click Edit".
-- [ ] Each step has Where / Do / You'll see (and a Say hint where it helps).
-- [ ] "Before you record" states only the already-true starting state — no "install"/"create first" chores.
-- [ ] Steps that edit fields tell the creator to enter Edit mode first.
-- [ ] Dialog/StrMenu selections include the follow-up OK/Cancel step.
+One brief sentence for UI-only steps (opening a tab, clicking a row); a fuller explanation of what
+the feature does and what the viewer sees for the teaching moment. Speak naturally: no "click the
+button labeled…", timestamps, or markup.

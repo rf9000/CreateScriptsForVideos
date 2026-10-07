@@ -1,166 +1,103 @@
 ---
 name: demo-spec-generator
-description: "Generate a human-readable Markdown recording script for a video content creator from AL codebase knowledge. Use when the user asks to: create a recording script, produce a demo script, generate step-by-step UI instructions, or document how to demo a Continia Banking feature. Triggers on: 'recording script', 'demo script', 'video script', 'demo-spec', 'script for video'."
+description: Writes a Markdown recording script that a video creator follows step by step to demo a Continia Banking feature in Business Central, derived from the AL source. Use it on its own when the demo data already exists, or through demo-data-orchestrator, which runs steps 4-7 after building the PTE.
 ---
 
 # Demo Recording-Script Generator
 
-Generate a **human-readable Markdown recording script** by navigating the AL codebase with LSP/Serena tools. The script is followed by a human content creator while recording a demo video — it tells them exactly where they are in Business Central, what to click, what to type, and what they will see.
+The script is read by a person recording a demo video in a real browser. They find things on screen
+by their visible text, so every page, action, and field must be named by its AL `Caption`, and every
+step must say where they are, what to do, and what they will see. You get that information by
+reading the AL code, mostly through LSP.
 
-**Output:** Single Markdown file → `<output-dir>/<feature-kebab-case>.md` (the caller provides the output directory; default `demo-specs/` only when run standalone — NEVER write into a read-only source repo).
+The run is unattended: when something is ambiguous, pick the most plausible option and record it as
+an assumption in your result rather than asking. The continia-banking repo is read-only (see
+`prompts/invariants.md`).
 
-**Key constraint:** A human follows this script in a real browser, navigating by the **exact visible text** of pages, actions, and fields (the AL `Caption` property). Direct-URL navigation (`?page=<id>`) replaces BC's search popup, so always give the page ID for the starting point.
+## Output
 
-## Workflow
+Write the script to the file path the caller provides. Only when run standalone with no path, use
+`demo-specs/<feature-kebab-case>.md` in the working directory.
 
-Follow these 7 steps in order.
+## Step 1 — Parse the request
 
-**Automation mode:** When invoked by an agent or with sufficient arguments (starting page ID provided, feature context clear), run all steps without interactive prompts. Only ask questions when arguments are missing AND inference from context fails.
+Identify the feature to demo, how specific the request is ("merge rules" vs "edit an existing merge
+rule"), and any app or country context. If it is vague, demo the happy-path "create new" flow and
+note that as an assumption.
 
-### Step 1 — Parse the Request
+## Step 2 — Discover the feature
 
-Extract from the user's message:
-- **Feature name** — the AL feature to demo
-- **Specificity level** — vague ("merge rules") vs specific ("edit an existing merge rule")
-- **App/country context** — if mentioned
+Find the pages, actions, and fields involved:
 
-If vague, default to a happy-path "create new" flow. State the assumption.
+- LSP `workspaceSymbol` for pages and actions matching the feature name.
+- Grep for captions or keywords, and Glob for `**/*<feature>*.al`, when symbol search finds nothing.
+- `documentSymbol` on a page file gives its numeric ID and caption (`Page NNNNN "Caption"`).
+- `goToDefinition`, `findReferences`, and `outgoingCalls` trace from an action to the code it runs
+  and to the pages it opens.
 
-### Step 2 — Discover the Feature
+If the feature exists in several apps, prefer the base `banking` app unless the request names a
+country or app, and record the choice. If nothing matches, record what you searched and fall back to
+the closest related page.
 
-Search for pages, actions, and fields matching the feature name:
+## Step 3 — Determine the starting page
 
-1. `workspaceSymbol` or `find_symbol` — search for pages matching the feature name
-2. `search_for_pattern` — broaden if symbol search returns nothing
-3. `Glob` with `**/*<feature>*.al` — fallback file search
+The recorder opens the starting page directly by URL (`<bc-url>/?page=<pageId>`), which is quicker
+and more reliable on camera than BC's search, so the script needs a real numeric page ID.
 
-**Disambiguation rules:**
-- Found in multiple apps → ask user which one
-- Not found → report what was searched, ask for alternative names
-- Found exactly → proceed, confirm with user which page(s) are involved
+- Use the starting page ID if the caller gave one.
+- Otherwise infer it: for a Card or Document page start from its parent List page (the list whose
+  `CardPageId` points at it); start a List page directly; for a NavigatePage wizard use its usual
+  entry point, often Assisted Setup (page 1801).
 
-Record for each discovered page: file path, **numeric page ID** (from `documentSymbol`), page caption.
+## Step 4 — Map the page structure
 
-### Step 3 — Determine Starting Page
+For each page in the flow, read the `.al` file (with `documentSymbol` and `hover` to navigate) and
+collect what the steps need: field and action captions, which `area()` and nested groups each action
+sits in, ToolTips (raw material for narration), `CardPageId`/`DrillDownPageId` for list-to-card
+navigation, and visibility conditions on fields and actions.
 
-The generator navigates directly via URL (`?page=<pageId>`). Search/Tell Me does NOT work.
+Where an action sits determines the click path, because BC only shows promoted actions directly in
+the action bar. Use the `area()` to action-bar tab mapping in `references/md-format.md`. Page
+extensions can add fields and actions; include them and note the source, e.g. _(Extended by:
+banking-dk)_.
 
-**Resolution order:**
-1. **Argument provided** — If the caller specified a starting page ID, use it directly.
-2. **Infer from context** — If the feature page is a Card/Document, use its parent List page. If it's a List page, use it directly. If it's a NavigatePage (wizard), check if it's typically launched from Assisted Setup (page 1801) or another entry point.
-3. **Ask the user** — Only if the above steps don't yield a clear answer. Present the discovered pages and ask which one to start on.
+## Step 5 — Build the recording steps
 
-When running in automation mode (called by an agent), never block on a question — use inference (option 2) and document the assumption.
+Follow `references/md-format.md` for the file layout and step rules. A typical sequence to reach and
+use an action: click the list row that opens the record, open the action-bar tab if the action is not
+promoted, click the action, then fill in fields by caption.
 
-### Step 4 — Map Page Structure
+For values the recorder types, use realistic, consistent data that fits the feature and matches what
+the PTE seeds (same codes, names, and amounts the script refers to). Use short uppercase codes for
+`Code` fields, plausible business names and amounts, valid enum/option captions, and dates relative
+to the work date rather than fixed calendar dates, since the environment's work date varies.
 
-For each page in the flow, extract:
+## Step 6 — Header and narration
 
-| Data Point | Tool | Notes |
-|------------|------|-------|
-| Page caption + **numeric ID** | `documentSymbol` | Top-level symbol gives `Page NNNNN "Caption"` |
-| Field captions (from `Caption` property) | `documentSymbol` + `hover` | Use `Caption`, not field name |
-| Action captions (from `Caption` property) | `documentSymbol` + read `.al` | **Exact text including ellipsis** |
-| Action area placement | Read the `.al` file | Which `area()` the action lives in — determines if tab click is needed |
-| Action group nesting | Read the `.al` file | Nested groups may need additional click steps |
-| ToolTips | Read the `.al` file | For synthesizing narration |
-| CardPageId / DrillDownPageId | Read the `.al` file | For list → card navigation |
-| Visibility conditions | Read the `.al` file | Note toggle states for prerequisites |
+The header gives the title, overview, starting state ("Before you record"), and starting point with
+page ID, as laid out in `references/md-format.md`. "Before you record" describes the state the
+pipeline has already set up, including the expected starting state of any toggle, so the first
+toggle produces a visible change. It never lists chores like installing an app or creating data,
+because the pipeline supplies all of that; data the presenter creates on camera belongs in the steps.
 
-**Action menu structure is critical.** Determine the click path:
+Add a "Say:" narration hint where it helps: one short sentence for UI-only steps such as opening a
+tab or a row, and a fuller explanation for the feature action itself, the teaching moment. Write it
+as natural speech.
 
-| AL `area()` | BC tab name | Tab click needed? |
-|---|---|---|
-| `area(Promoted)` | Directly in action bar | **No** — single step |
-| `area(Processing)` | "Home" or "Process" | Yes |
-| `area(Navigation)` | "Page" or "Navigate" | Yes |
-| `area(Reporting)` | "Report" | Yes |
-| `area(Creation)` | "New" | Yes |
+## Step 7 — Write the file and report
 
-### Step 5 — Build the Recording Steps
+Write the script to the output path, then report the path, the number of steps, the pages covered,
+and any assumptions or gaps.
 
-Read the Markdown format reference: `references/md-format.md`
+## Edge cases
 
-Each step is a numbered instruction written for a person. Every step states **where they are**, **what to do**, and **what they should see**. One UI interaction per step.
+- **Wizards (`PageType = NavigatePage`):** walk each wizard step, using the step-visibility variables
+  to tell which fields show on which step.
+- **Conditional visibility:** prefer elements visible by default; when the flow needs a hidden one,
+  state the condition that shows it.
+- **Long flows (more than about 15 steps):** split into parts at natural boundaries (setup vs. use,
+  or one sub-feature per part) as `## Part N` sections in the same file, and note the split.
+- **Uncertain menu structure:** when you can't tell whether a group renders as a submenu, give the
+  full click path and add an italic note that it may need adjusting during recording.
 
-**Critical constraints (for accurate UI pointers):**
-- Give the **starting page ID** so the recorder can open it directly (`<bc-url>/?page=<pageId>`) instead of searching.
-- List rows: tell them to **click the Nth row** (1-indexed) by its primary-key link — there is no "Edit" button on a list.
-- Non-promoted actions need a **tab-click step first** (tell them to open the area tab, then click the action).
-- Nested action groups may need an extra click — describe the full path.
-- Use the **exact visible caption** from the AL `Caption` property (include ellipsis if present).
-- DemoPortal renders English captions regardless of locale — write English text.
-
-**Step assembly order:**
-
-1. **Click the list row** that opens the record
-2. **Open the action-bar tab** the action lives under (e.g., "Page", "Process") — only if the action is not promoted
-3. **Click the action** by its caption
-4. **Type the value** into the field (by its caption)
-
-**Sample value generation rules:**
-
-| AL Field Type | Sample Value Strategy |
-|---------------|----------------------|
-| `Code[N]` | Short uppercase codes (e.g., `BANK-001`) |
-| `Text[N]` | Descriptive names from context |
-| `Decimal` | Realistic amounts (e.g., `10000.00`) |
-| `Boolean` | Typical usage default |
-| `Enum` | First/most common value from `documentSymbol` |
-| `Option` | Use OptionCaption values |
-| `Date` | Concrete dates (e.g., `01-01-2025`) |
-
-### Step 6 — Build the Script Header & Narration Hints
-
-The script opens with a header section the recorder reads before starting:
-
-| Section | Source |
-|---------|--------|
-| Title | Feature name, title-cased |
-| Starting point | Page caption + **page ID** (so they can open it directly) |
-| App | Monorepo folder name |
-| Overview | 1-2 sentences on what the demo shows |
-| Before you record | The already-true starting state + expected toggle/state (e.g., "Statement lines start in fewer-columns mode"). NOT setup chores — never "install …" / "create … first". |
-
-Each step may include a **narration hint** — a natural sentence the recorder can say while performing the step:
-
-| Step type | Style |
-|-----------|-------|
-| UI-only (menu/tab click) | Brief, 1 sentence |
-| Row click (opening record) | Brief context |
-| Feature action (the teaching moment) | Detailed — what it does + what the viewer sees |
-
-Write narration naturally, as if speaking on camera. No markup, no timestamps, no "click on the button labeled...".
-
-### Step 7 — Write and Present
-
-1. Write the Markdown file to `<output-dir>/<feature-kebab-case>.md` (use the output directory the caller provided; never write into a read-only source repo).
-2. Present a summary:
-   - File path written
-   - Number of steps generated
-   - Pages covered
-   - Any assumptions or gaps
-
-## Edge Cases
-
-### Wizard Flows (NavigatePage)
-Detect `PageType = NavigatePage`. Generate steps per wizard step using visibility patterns.
-
-### Page Extensions
-Include extended fields/actions. Add a parenthetical note: _(Extended by: banking-dk)_.
-
-### Conditional Visibility
-Favor default-visible elements. Note conditions for non-default elements.
-
-### Large Flows (>15 steps)
-Suggest splitting into multiple script files. Ask user how to split.
-
-### Uncertain Menu Structure
-When unsure if a group renders as a submenu, describe the full click path and add an italic note that it may need adjustment when recording.
-
-## What This Skill Does NOT Do
-
-- Record videos or capture the screen
-- Generate videos or handle TTS/subtitles/cursor animation
-- Modify AL source code
-- Handle login/authentication
+This skill does not record video, modify AL source, or handle login.

@@ -98,6 +98,7 @@ describe('runPipeline', () => {
     expect(result.costUsd).toBe(3);
     expect(result.stages?.map((s) => s.stage)).toEqual(['generate', 'validate', 'deploy']);
     expect(result.scriptPath).toBe(itemPaths(testConfig(), 42).scriptPath);
+    expect(result.ptePath).toMatch(/42[\\/]pte$/);
 
     expect(query).toHaveBeenCalledTimes(3);
     expect(cli.createEnvironment).toHaveBeenCalledWith('Demo #42 Demo merge rules', 'profile-1');

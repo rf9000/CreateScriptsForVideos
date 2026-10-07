@@ -1,30 +1,26 @@
 ---
 name: demo-data-validator
-description: "Use when a demo-data PTE and its Markdown recording script have been generated and need validation before the demo package is considered complete. Triggers on: validate demo data, check the PTE, verify demo data, demo data review, before publishing demo data."
+description: Validates a generated demo-data PTE against its Markdown recording script and the AL codebase, returning blockers, warnings, and suggestions. Use after the PTE and script are generated and before they are deployed.
 ---
 
 # Demo Data Validator
 
-Validate a generated demo-data PTE against its recording script and the AL codebase before the demo
-package is trusted. Runs **four specialized sub-agents in parallel**, then aggregates their findings
-into a single verdict. The caller uses the verdict as a **blocking gate with a fix loop**: blockers
-must be fixed and re-validated before reporting success.
-
-**Core principle:** the demo data must be coherent with the script, realistic, complete (every
-required field and related record exists), and good enough to teach a beginner — verified against the
-actual AL code, not assumed.
+A demo fails on camera when the script points at data the PTE never created, when a required field
+or related record is missing, or when the data is too thin to teach anything. This skill catches
+those problems before deploy by checking the PTE against the script and against the actual AL code,
+not against assumptions. The goal: data that is coherent with the script, realistic, complete, and
+good enough to teach a beginner.
 
 ## Inputs
 
-- Path to the generated `.md` recording script.
-- Path to the generated PTE folder (`app.json`, `InstallDemoData.Codeunit.al`).
-- Read-only continia-banking repo (for LSP tracing and automated tests).
+- The recording script file.
+- The PTE folder (`app.json`, `InstallDemoData.Codeunit.al`).
+- The continia-banking repo, read-only, for LSP tracing and its automated tests.
 
 ## Workflow
 
-Dispatch the four sub-agents below **concurrently** (one `Task` per agent, single message — see
-`superpowers:dispatching-parallel-agents`). Give each the three inputs above and the findings
-contract. When all return, aggregate and emit the verdict.
+Dispatch the four sub-agents below in parallel: one `Agent` call each, all in a single message. Give
+each the three inputs, its check, and the findings format. When all have returned, aggregate.
 
 Each sub-agent returns a JSON list of findings:
 
@@ -32,75 +28,70 @@ Each sub-agent returns a JSON list of findings:
 [{ "severity": "blocker|warning|suggestion", "check": "<agent>", "finding": "...", "suggestion": "..." }]
 ```
 
-- **blocker** — the demo will not work or actively misleads (missing record, unset required field, script step referencing data that isn't seeded). Must be fixed.
-- **warning** — likely to confuse or look unrealistic; fix if cheap.
-- **suggestion** — polish.
+- **blocker:** the demo will not work or actively misleads (missing record, unset required field, a
+  script step that relies on data that isn't seeded). Must be fixed.
+- **warning:** likely to confuse or look unrealistic; fix if cheap.
+- **suggestion:** polish.
 
-### Sub-agent 1 — Script ↔ data coherency
+### Sub-agent 1 — Script and data coherency
+
 Cross-check every entity and value the script tells the recorder to open, select, or type against
-what the PTE actually inserts. **Blocker** when a script step depends on a record/value the PTE does
-not create. **Warning** when the PTE seeds entities the script never uses (dead data).
+what the PTE inserts. A step that depends on a record or value the PTE doesn't create is a blocker.
+Data the PTE seeds but the script never uses is a warning.
 
-**Blocker — no user prerequisites.** The pipeline provides all data and setup. Flag as a **blocker**
-any script content (including the "Before you record" / prerequisites section, narration, or gaps)
-that tells the user to install an app, publish an extension, or create/prepare setup data before
-recording (e.g. "install banking-demo first", "G/L account 8210 must exist"). The fix is to create
-the data in the PTE or publish `banking-demo` in the pipeline — not to instruct the user. The only
-records the presenter may create are those whose creation IS an on-camera demo step.
+Any script text (starting state, narration, gaps) that asks the presenter to install an app, publish
+an extension, or prepare setup data is a blocker, because the pipeline supplies all of that. The fix
+is to seed the data in the PTE or rely on the deploy stage publishing `banking-demo`. The presenter
+may create only records whose creation is itself an on-camera demo step.
 
 ### Sub-agent 2 — Value realism
-Inspect every field value the PTE sets. Flag placeholder/gibberish values (`TEST`, `asdf`, `xxx`,
-sequential `123`), implausible amounts, malformed IBANs/bank codes/dates. Ground realistic
-replacements in the localized templates (`banking-demo/.../DK`, `.../DE`) and the test
-`Library Create*` procedures. Realism issues are usually **warnings**; malformed values that fail
-validation are **blockers**.
 
-### Sub-agent 3 — Data completeness (LSP)
-The heavy, code-driven check. For each table the PTE inserts, using LSP
-(`documentSymbol`, `goToDefinition`, `outgoingCalls`) and `references/data-research-strategy.md`
-from `demo-data-orchestrator`:
-- Verify **all primary-key fields** are set.
-- Verify **all mandatory fields** are set — those guarded by `TestField`, `NotBlank`, or `Error()`
-  in the table's `OnInsert`/validation and in the action code paths the script triggers.
-- Follow every set field's **`TableRelation`** to confirm the referenced record is also created;
-  recurse into those tables (including "seemingly unrelated" ones). **Blocker** on any missing
-  related record.
-- **Mine the automated tests** (`*-test/Libraries/` `Create*` procedures and `Initialize()`) for the
-  same feature — tests routinely create setup records in unrelated tables that the static relation
-  trace misses. Any table the tests create but the PTE omits is a **blocker** until proven unneeded.
+Inspect every field value the PTE sets. Flag placeholders and gibberish (`TEST`, `asdf`, `xxx`,
+sequential `123`), implausible amounts, and malformed IBANs, bank codes, or dates. Base realistic
+replacements on the localized templates in `banking-demo` (e.g. the DK and DE folders) and the
+`Library Create*` procedures in the test apps. Realism issues are usually warnings; a malformed value
+that will fail validation is a blocker.
 
-Remediate every gap by creating the record in the PTE or (for baseline demo-company data) having the
-pipeline publish `banking-demo` — never by listing it as a user prerequisite.
+### Sub-agent 3 — Data completeness
 
-### Sub-agent 4 — Pedagogical fit
-Judge whether the data + script support a **detailed, step-by-step learning video for an end customer
-with no prior product knowledge**: enough records to demonstrate the concept (not just one), clear
-contrasts for before/after and toggle steps, no confusing leftover or ambiguous state, and naming
-that teaches rather than obscures. Mostly **warnings/suggestions**; a state that makes a teaching
-step impossible (e.g. nothing to contrast) is a **blocker**.
+The code-driven check. Follow
+`.claude/skills/demo-data-orchestrator/references/data-research-strategy.md` (the backward trace and
+the "Mine Automated Tests" section), using LSP `documentSymbol`, `goToDefinition`, `findReferences`,
+and `outgoingCalls`. For each table the PTE inserts, confirm:
 
-## Aggregation & verdict
+- all primary-key fields are set;
+- all mandatory fields are set, meaning those guarded by `TestField`, `NotBlank`, or `Error()` in the
+  table triggers and in the action code paths the script triggers;
+- every `TableRelation` on a set field points at a record that exists, recursing into those tables;
+- every setup record the feature's tests create (`Initialize()` and `Create*` library procedures) is
+  also created by the PTE, since tests often reveal setup in unrelated tables that a relation trace
+  misses.
 
-Merge all findings, de-duplicate, sort by severity. Emit:
+A missing related or setup record is a blocker until shown to be unneeded. The remedy is to create it
+in the PTE, or for baseline demo-company data to rely on `banking-demo`, never a presenter
+prerequisite.
+
+### Sub-agent 4 — Teaching fit
+
+Judge whether the data and script support a step-by-step learning video for a customer with no prior
+product knowledge: enough records to show the concept (not just one), a clear before/after contrast
+for toggles and actions, no confusing leftover or ambiguous state, and names that explain rather than
+obscure. Mostly warnings and suggestions; a state that makes a teaching step impossible, such as
+nothing to contrast, is a blocker.
+
+## Verdict
+
+Merge all findings, remove duplicates, sort by severity, and return:
 
 ```json
 { "passed": <true if zero blockers>, "blockers": [...], "warnings": [...], "suggestions": [...] }
 ```
 
-## Caller contract (blocking fix loop)
+## How the validate stage uses the verdict
 
-The caller (e.g. `create-script`) must:
-1. Run this validator after generating the PTE + script.
-2. If `passed` is false: apply fixes for the **blockers** (and cheap warnings) to the PTE and/or
-   script, then re-run the validator. Repeat up to 3 times.
-3. If blockers remain after the retries: report a `failed` result with the blockers as the reason.
-4. Carry remaining warnings/suggestions into the result's `gaps`.
+The validate stage (`prompts/validate.md`) fixes the blockers in the PTE or the script and runs this
+skill again, for at most three fix rounds. It then reports `passed` or `blocked`, with the blockers
+still open and the warnings it chose not to fix.
 
-## What this skill does NOT do
-
-- Modify continia-banking (read-only) — fixes go to the PTE/script only.
-- Compile, deploy, or run the PTE (validation is static + LSP; runtime verification is a separate step).
-- Record or generate videos.
-
-> Note: the four sub-agents have not yet been empirically pressure-tested against a real PTE; run a
-> baseline before relying on the gate in production (see `superpowers:writing-skills`).
+This skill only reads. It never modifies continia-banking, and it doesn't compile, deploy, or run the
+PTE; runtime verification happens in the deploy stage.
