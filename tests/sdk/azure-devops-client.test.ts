@@ -442,6 +442,16 @@ describe('queryTaggedWorkItems', () => {
     expect(itemMode(mockConfig(), item('other'))).toBeUndefined();
   });
 
+  test('uploadAttachment sends binary content unchanged', async () => {
+    setMockFetch({ id: 'att-9', url: 'https://att/att-9' });
+    const bytes = new Uint8Array([0, 1, 2, 255]);
+    const ref = await uploadAttachment(mockConfig(), 'demo.mp4', bytes);
+    expect(ref.url).toBe('https://att/att-9');
+    const init = mockFn.mock.calls[0]![1] as RequestInit;
+    expect(init.body).toBe(bytes);
+    expect(String(mockFn.mock.calls[0]![0])).toContain('fileName=demo.mp4');
+  });
+
   test('omits the AreaPath clause when areaPath is empty', async () => {
     setSequentialMockFetch(
       { body: { workItems: [{ id: 7, url: 'u7' }] } },

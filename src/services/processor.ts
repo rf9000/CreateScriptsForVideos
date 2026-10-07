@@ -23,7 +23,7 @@ export interface ProcessorDeps {
   uploadAttachment: (
     config: AppConfig,
     fileName: string,
-    content: string,
+    content: string | Uint8Array,
   ) => Promise<AttachmentRef>;
   linkAttachment: (
     config: AppConfig,
