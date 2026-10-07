@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { z } from 'zod';
-import type { AppConfig, EnvDetails, ScriptResult, StageUsage } from '../types/index.ts';
+import type { AppConfig, EnvDetails, ItemMode, ScriptResult, StageUsage } from '../types/index.ts';
 import { runAgentStage, defaultAgentStageDeps } from './agent-stage.ts';
 import type { AgentStageDeps, StageRun } from './agent-stage.ts';
 import { createContiniaCli, waitForRunning } from './continia-cli.ts';
@@ -9,6 +9,9 @@ import type { ContiniaCli } from './continia-cli.ts';
 import { selectProfile } from './profile-selection.ts';
 import { countryAppDir, discoverBankingApps, requiredBcVersion } from '../utils/banking-repo.ts';
 import type { BankingApp } from '../utils/banking-repo.ts';
+import { makeVideo } from '../video/make-video.ts';
+import type { VideoResult } from '../video/make-video.ts';
+import { lintRecording, loadVideoInputs } from '../video/recording.ts';
 
 /**
  * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
@@ -76,6 +79,7 @@ export interface PipelineDeps {
   fileExists: (path: string) => boolean;
   readAppName: (ptePath: string) => string;
   discoverBankingApps: (repoPath: string) => BankingApp[];
+  makeVideo: (input: Parameters<typeof makeVideo>[0]) => Promise<VideoResult>;
 }
 
 export const defaultPipelineDeps: PipelineDeps = {
@@ -91,6 +95,7 @@ export const defaultPipelineDeps: PipelineDeps = {
   clearState: (path) => rmSync(path, { force: true }),
   fileExists: existsSync,
   discoverBankingApps,
+  makeVideo: (input) => makeVideo(input),
   readAppName: (ptePath) => {
     const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
     if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
@@ -156,6 +161,8 @@ function envName(context: WorkItemContext): string {
 export interface PipelineOptions {
   /** Continue from the saved state instead of starting over. */
   resume?: boolean;
+  /** 'video' also records a demo video. Default 'script'. */
+  mode?: ItemMode;
 }
 
 export async function runPipeline(
@@ -228,7 +235,7 @@ export async function runPipeline(
     const run = await runAgentStage(
       config,
       'generate',
-      ['invariants', 'generate'],
+      options.mode === 'video' ? ['invariants', 'generate', 'generate-video'] : ['invariants', 'generate'],
       `${brief}\n\n${where}`,
       generateOutputSchema,
       deps.stageDeps,
@@ -240,6 +247,17 @@ export async function runPipeline(
     if (!deps.fileExists(paths.scriptPath)) return failed(`recording script not written to ${paths.scriptPath}`);
     if (!deps.fileExists(join(paths.ptePath, 'app.json'))) return failed(`PTE app.json not written in ${paths.ptePath}`);
     state.generate = run.output;
+    if (options.mode === 'video') {
+      // Lint problems become gaps, not failures: the script and env are still worth
+      // delivering, and makeVideo lints again and reports.
+      const itemDir = join(paths.scriptPath, '..');
+      try {
+        const problems = lintRecording(loadVideoInputs(itemDir).recording);
+        if (problems.length) state.generate.gaps.push(`video: recording.yml is not replayable: ${problems.join('; ')}`);
+      } catch (err) {
+        state.generate.gaps.push(`video: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     save();
   }
 
@@ -321,7 +339,22 @@ export async function runPipeline(
       return failed(`deploy reported success but "${appName}" is not installed on ${state.envId}`);
     }
     const env = await collectEnv(cli, state.envId);
-    return { ...base(), status: 'success', env };
+    if (options.mode !== 'video') return { ...base(), status: 'success', env };
+    log('  Recording demo video...');
+    const video = await deps.makeVideo({
+      itemDir: join(paths.scriptPath, '..'),
+      url: env.url,
+      user: env.username,
+      password: env.password,
+      config,
+    });
+    if (!video.ok) log(`  Video failed: ${video.error}`);
+    return {
+      ...base(),
+      status: 'success',
+      env,
+      video: video.ok ? { ok: true, path: video.videoPath } : { ok: false, error: video.error },
+    };
   } catch (err) {
     return failed(`verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }

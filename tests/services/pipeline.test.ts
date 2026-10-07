@@ -69,6 +69,7 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     clearState: mock(() => {}),
     fileExists: mock(() => true),
     readAppName: mock(() => 'Continia Demo Data - Merge Rules'),
+    makeVideo: mock(async () => ({ ok: true, videoPath: '/out/42/demo.mp4' }) as { ok: boolean; videoPath?: string; error?: string }),
     discoverBankingApps: mock(() => [
       { dir: 'base-application', name: 'Continia Banking', application: '29.0.0.0', platform: '29.0.0.0' },
       { dir: 'banking-dk', name: 'Continia Banking DK', application: '29.0.0.0' },
@@ -224,6 +225,36 @@ describe('runPipeline', () => {
     const saved = JSON.stringify([...store.values()]);
     expect(saved).toContain('env-1');
     expect(saved).not.toContain('pw');
+  });
+
+  test('video mode appends the video prompt and makes the video after verify', async () => {
+    const { deps, query } = makeDeps();
+    const result = await runPipeline(testConfig(), context, { mode: 'video' }, deps);
+    const generateAppend = (query.mock.calls[0]![0].options.systemPrompt as { append: string }).append;
+    expect(generateAppend).toContain('<generate-video>');
+    expect(deps.makeVideo).toHaveBeenCalledTimes(1);
+    const videoInput = (deps.makeVideo.mock.calls[0] as unknown[])[0] as { url: string; user: string };
+    expect(videoInput.url).toBe('https://bc/env-1');
+    expect(videoInput.user).toBe('ADMIN');
+    expect(result.status).toBe('success');
+    expect(result.video).toEqual({ ok: true, path: '/out/42/demo.mp4' });
+    expect(result.gaps?.some((g) => g.startsWith('video:'))).toBe(true);
+  });
+
+  test('script mode never makes a video', async () => {
+    const { deps, query } = makeDeps();
+    const result = await runPipeline(testConfig(), context, {}, deps);
+    expect((query.mock.calls[0]![0].options.systemPrompt as { append: string }).append).not.toContain('<generate-video>');
+    expect(deps.makeVideo).not.toHaveBeenCalled();
+    expect(result.video).toBeUndefined();
+  });
+
+  test('a failed video keeps the item a success and carries the reason', async () => {
+    const { deps } = makeDeps();
+    deps.makeVideo.mockImplementation(async () => ({ ok: false, error: 'recording failed at step 4: dialog' }));
+    const result = await runPipeline(testConfig(), context, { mode: 'video' }, deps);
+    expect(result.status).toBe('success');
+    expect(result.video).toEqual({ ok: false, error: 'recording failed at step 4: dialog' });
   });
 
   test('resume skips the steps already done', async () => {

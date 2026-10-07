@@ -124,6 +124,8 @@ export interface ScriptResult {
   costUsd?: number;
   /** Per-stage usage, in run order. */
   stages?: StageUsage[];
+  /** Video outcome, set only for video items. */
+  video?: { ok: boolean; path?: string; error?: string };
 }
 
 /** What a tagged item asks for. `video` is a superset of `script`. */
