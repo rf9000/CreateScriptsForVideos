@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { mkdtempSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { COMPOSE_TIMEOUT_MS, ENCODER_ARGS, formatAssTime, writeSubtitles } from '../../src/video/compose.ts';
+import { COMPOSE_TIMEOUT_MS, ENCODER_ARGS, SUBTITLE_BAND_PX, formatAssTime, videoFilters, writeSubtitles } from '../../src/video/compose.ts';
 
 describe('formatAssTime', () => {
   test('H:MM:SS.cc', () => {
@@ -20,6 +20,7 @@ describe('writeSubtitles', () => {
     );
     const text = readFileSync(ass, 'utf-8');
     expect(text).toContain('PlayResX: 1920');
+    expect(text).toContain(`PlayResY: ${1080 + SUBTITLE_BAND_PX}`);
     expect(text).toContain('Dialogue: 0,0:00:04.00,0:00:06.00');
     expect(existsSync(join(dir, 'demo.srt'))).toBe(true);
   });
@@ -30,5 +31,18 @@ describe('encoding budget', () => {
     expect(COMPOSE_TIMEOUT_MS).toBe(600_000);
     expect(ENCODER_ARGS).toContain('-preset veryfast');
     expect(ENCODER_ARGS).toContain('-c:v libx264');
+  });
+});
+
+describe('videoFilters', () => {
+  test('trims, adds a black band below the picture, and burns subtitles into the band', () => {
+    const f = videoFilters(6500, '/tmp/demo.ass');
+    expect(f[0]).toBe('trim=start=6.500,setpts=PTS-STARTPTS');
+    expect(f[1]).toBe(`pad=iw:ih+${SUBTITLE_BAND_PX}:0:0:black`);
+    expect(f[2]).toContain("ass='");
+  });
+
+  test('no subtitles: no band either', () => {
+    expect(videoFilters(0, undefined)).toEqual([]);
   });
 });

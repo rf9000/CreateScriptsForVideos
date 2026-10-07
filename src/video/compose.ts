@@ -19,6 +19,22 @@ export const COMPOSE_TIMEOUT_MS = 600_000;
 /** veryfast keeps encode time down at a small size cost; screen recordings compress well. */
 export const ENCODER_ARGS = ['-c:v libx264', '-preset veryfast', '-c:a aac', '-b:a 192k'];
 
+/** Black band below the 1080p picture that holds the subtitles, so they never cover the UI. */
+export const SUBTITLE_BAND_PX = 140;
+
+/** FFmpeg -vf chain: trim the loading screen, then (with subtitles) add the band and burn them in. */
+export function videoFilters(trimMs: number, subtitlePath: string | undefined): string[] {
+  const filters: string[] = [];
+  // setpts trim instead of -ss: input seeking on webm is unreliable.
+  if (trimMs > 0) filters.push(`trim=start=${(trimMs / 1000).toFixed(3)},setpts=PTS-STARTPTS`);
+  if (subtitlePath) {
+    filters.push(`pad=iw:ih+${SUBTITLE_BAND_PX}:0:0:black`);
+    const absSubPath = resolve(subtitlePath).replace(/\\/g, '/').replace(/:/g, '\\:');
+    filters.push(`ass='${absSubPath}'`);
+  }
+  return filters;
+}
+
 const FADE_IN_MS = 300;
 const FADE_OUT_MS = 400;
 const MAX_WORDS_PER_CHUNK = 12;
@@ -42,11 +58,12 @@ export function writeSubtitles(
     'Title: Demo Narration',
     'ScriptType: v4.00+',
     'PlayResX: 1920',
-    'PlayResY: 1080',
+    `PlayResY: ${1080 + SUBTITLE_BAND_PX}`,
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    'Style: Default,Arial,36,&H00FFFFFF,&H000000FF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,50,1',
+    // Centered in the black band below the picture.
+    'Style: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,60,60,45,1',
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -226,17 +243,7 @@ export function composeVideo(options: {
     cmdParts.push(`-i "${absVideo}"`);
     cmdParts.push(`-i "${combinedAudioPath}"`);
 
-    // Build video filter chain
-    const vFilters: string[] = [];
-    if (trimMs > 0) {
-      // Use setpts to trim from the start instead of -ss (more reliable for webm)
-      vFilters.push(`trim=start=${(trimMs / 1000).toFixed(3)},setpts=PTS-STARTPTS`);
-    }
-    if (subtitlePath && existsSync(resolve(subtitlePath))) {
-      const absSubPath = resolve(subtitlePath).replace(/\\/g, '/').replace(/:/g, '\\:');
-      // Use ASS filter — styles and fade effects are embedded in the .ass file
-      vFilters.push(`ass='${absSubPath}'`);
-    }
+    const vFilters = videoFilters(trimMs, subtitlePath && existsSync(resolve(subtitlePath)) ? subtitlePath : undefined);
     if (vFilters.length > 0) {
       cmdParts.push(`-vf "${vFilters.join(',')}"`);
     }

@@ -100,6 +100,10 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     });
     const videoStart = videoStartedAt;
     await injectCursor(page);
+    // Teaching tips ("About bank accounts") pop up shortly after a page loads; close them while
+    // the video is still in the part that gets trimmed.
+    await page.waitForTimeout(1500);
+    await dismissTeachingTips(await awaitFrame(page)).catch(() => 0);
     await page.waitForTimeout(500);
     // Everything before the first step (loading, login landing) is trimmed from the final video.
     timing.trimStartMs = Date.now() - videoStart;
