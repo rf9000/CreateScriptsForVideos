@@ -170,6 +170,27 @@ and one frame shows IBAN plus all auto-filled fields. Still to do:
 - an automated quality gate: a vision model reviews the after-frame of each step against the
   script's "You'll see" line (V1 found vision good at verifying, bad at aiming).
 
+### Video quality, second pass (staging module, `staging.ts`)
+
+`staging.ts` now holds the cosmetic layer, ported from V1 and fitted to BC 29 markup:
+- fields found by `[controlname="<field>"]` (the recording's `field:` is the control name);
+- FastTab expansion: the hinted FastTab from `<recording>.staging.yml` (`fieldGroups:`), otherwise
+  try each collapsed FastTab and collapse misses back;
+- "Show more" scoped to the FastTab (`button.show-more-fields-button[aria-label="<FastTab>, Show more"]`);
+- V1's `scrollContainerToReveal` (vertical, then horizontal with grid header/body sync);
+- V1's comfort-zone centering, for fields and rows only (not action bars or Role Center links);
+- masked values revealed (`button.concealed-data-reveal-button`) before visible typing;
+- teaching tips closed before each step; cursor rests at the right end of fields.
+
+IBAN demo, with the hint `IBAN: Transfer`: 10/10 steps, cursor 6/6, only Transfer expands, the
+IBAN is typed character by character in clear text, then SWIFT, Country, Name, Address, Post Code
+and City fill in, all in one frame (`results/…T20-24-53/shots/step-06.png`).
+
+Not covered yet: horizontal grid scrolling (needs a list scenario with many columns, e.g. Bank
+Account Communication Setup with demo data); trimming the "Getting ready" screen; notification
+bars; closing teaching tips as soon as a page opens rather than at the next step. A last field on a
+card can't be centered (IBAN reports `edge`) but is fully visible.
+
 **Decision: go** for the `create video` tag. BC's engine executes the steps; our code only adds the
 cursor, pacing, narration and composition. Requirements this puts on V2:
 

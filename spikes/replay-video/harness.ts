@@ -19,6 +19,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { basename, join, resolve } from 'path';
 import { animateClick, injectCursor } from './cursor.ts';
+import { dismissTeachingTips, findTarget, stage as stageStep, typeVisibly, visibility } from './staging.ts';
+import type { StagingHints, Visibility } from './staging.ts';
+import { existsSync } from 'fs';
 
 type Target = { page?: string; field?: string; action?: string; part?: string; [k: string]: unknown };
 type Step = {
@@ -107,6 +110,9 @@ function resolveEnvironment(id: string): { bcUrl: string; bcUser: string; bcPass
 }
 
 const recording = parse(readFileSync(recordingPath, 'utf-8')) as Recording;
+// Optional <recording>.staging.yml next to the recording, e.g. which FastTab holds a field.
+const hintsPath = recordingPath.replace(/\.ya?ml$/, '.staging.yml');
+const hints: StagingHints = existsSync(hintsPath) ? (parse(readFileSync(hintsPath, 'utf-8')) as StagingHints) : {};
 if (!recording?.description || !Array.isArray(recording.steps)) {
   console.error(`${recordingPath} is not a valid recording (needs description and steps)`);
   process.exit(2);
@@ -209,66 +215,6 @@ const errorText = (e: unknown): string | undefined => {
   return JSON.stringify(e);
 };
 
-// ---------- cosmetic cursor targeting (best effort; failure only loses the glide) ----------
-async function firstVisible(candidates: Locator[]): Promise<Locator | undefined> {
-  for (const c of candidates) {
-    const n = await c.count().catch(() => 0);
-    for (let i = n - 1; i >= 0; i--) {
-      // Last visible match wins: BC edit mode renders duplicates after the originals.
-      const el = c.nth(i);
-      if (await el.isVisible().catch(() => false)) return el;
-    }
-  }
-  return undefined;
-}
-
-async function cursorTarget(frame: Frame, step: Step): Promise<Locator | undefined> {
-  const dialog = frame.locator('[role=dialog]:visible').last();
-  const scopes = (await dialog.count()) > 0 ? [dialog, frame.locator('body')] : [frame.locator('body')];
-  // Real recordings name controls internally (action: Control_New); the visible caption
-  // is in the description (<caption>New</caption>), so prefer that for finding the element.
-  const shown = typeof step.description === 'string'
-    ? /<caption>([^<]+)<\/caption>/.exec(step.description)?.[1]
-    : undefined;
-  const field = step.target?.find((t) => t.field) ? (shown ?? step.target?.find((t) => t.field)?.field) : undefined;
-  const action = step.caption ?? (step.target?.find((t) => t.action) ? (shown ?? step.target?.find((t) => t.action)?.action) : undefined);
-
-  for (const scope of scopes) {
-    if ((step.type === 'input' || step.type === 'focus') && field) {
-      const hit = await firstVisible([
-        scope.getByRole('textbox', { name: field, exact: true }),
-        scope.getByRole('combobox', { name: field, exact: true }),
-        scope.getByRole('checkbox', { name: field, exact: true }),
-        // Masked fields (IBAN, account numbers) are password inputs with no textbox role.
-        scope.getByLabel(field, { exact: true }),
-        scope.locator(`[controlname="${field}"] input`),
-      ]);
-      if (hit) return hit;
-    } else if (action) {
-      const hit = await firstVisible([
-        scope.getByRole('menuitem', { name: action, exact: true }),
-        scope.getByRole('button', { name: action, exact: true }),
-        scope.getByRole('link', { name: action, exact: true }),
-        scope.getByRole('menuitemradio', { name: action, exact: true }),
-        scope.getByText(action, { exact: true }),
-      ]);
-      if (hit) return hit;
-    } else if (step.row !== undefined) {
-      const rows = scope.locator('table.ms-nav-grid-data-table tbody tr, [role=grid] [role=row]');
-      if (typeof step.row === 'number') {
-        const n = await rows.count();
-        // Grid rows may include a header row; try the nth data row from the last grid.
-        const hit = await firstVisible([rows.nth(Math.min(step.row, Math.max(n - 1, 0)))]);
-        if (hit) return hit;
-      } else {
-        const hit = await firstVisible([rows.filter({ hasText: String(step.row) })]);
-        if (hit) return hit;
-      }
-    }
-  }
-  return undefined;
-}
-
 function describe(step: Step): string {
   const field = step.target?.find((t) => t.field)?.field;
   if (step.type === 'input') return `input ${field ?? '?'} = ${String(step.value)}`;
@@ -276,60 +222,6 @@ function describe(step: Step): string {
   if (step.row !== undefined) return `row ${String(step.row)}`;
   if (step.type === 'scope') return `scope (${step.steps?.length ?? 0} steps)`;
   return step.type;
-}
-
-// ---------- staging: make the step's target visible before BC's engine runs it ----------
-type Visibility = 'in-view' | 'edge' | 'off-screen' | 'not-found';
-const EDGE_MARGIN = 80;
-
-async function visibility(target: Locator | undefined): Promise<Visibility> {
-  if (!target) return 'not-found';
-  const box = await target.boundingBox().catch(() => null);
-  if (!box) return 'not-found';
-  const inside = box.y >= 0 && box.y + box.height <= VIEWPORT.height && box.x >= 0 && box.x + box.width <= VIEWPORT.width;
-  if (!inside) return 'off-screen';
-  const comfortable = box.y >= EDGE_MARGIN && box.y + box.height <= VIEWPORT.height - EDGE_MARGIN;
-  return comfortable ? 'in-view' : 'edge';
-}
-
-/** Find the target; if it's a field that isn't rendered, expand collapsed FastTabs until it is; center it. */
-async function stageTarget(page: Page, frame: Frame, step: Step, entry: StepLog): Promise<Locator | undefined> {
-  let target = await cursorTarget(frame, step).catch(() => undefined);
-  const hasField = step.target?.some((t) => t.field);
-  if (!target && hasField) {
-    // Collapsed FastTabs don't render their fields at all, so the field only appears after expanding.
-    const headers = frame.locator('span[role=button].ms-nav-columns-caption[aria-expanded="false"]');
-    const captions = (await headers.allTextContents()).map((t) => t.trim()).filter(Boolean);
-    entry.expanded = [];
-    for (const caption of captions) {
-      await frame.locator('span[role=button].ms-nav-columns-caption[aria-expanded="false"]', { hasText: caption }).first().click();
-      entry.expanded.push(caption);
-      await awaitFrame(page).catch(() => {});
-      target = await cursorTarget(frame, step).catch(() => undefined);
-      if (target) break;
-    }
-  }
-  if (target) {
-    await target.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'smooth' })).catch(() => {});
-    await page.waitForTimeout(700);
-  }
-  return target;
-}
-
-/** Type the value visibly; BC's engine commits the same value right after, which fires the triggers. */
-async function typeVisibly(target: Locator, step: Step): Promise<boolean> {
-  if (step.type !== 'input' || typeof step.value !== 'string' || step.value.startsWith('=')) return false;
-  const kind = await target.evaluate((el) => {
-    const input = el as HTMLInputElement;
-    return el.tagName === 'INPUT' && (input.type === 'text' || input.type === 'password') && el.getAttribute('role') !== 'combobox'
-      ? 'text'
-      : 'other';
-  }).catch(() => 'other');
-  if (kind !== 'text') return false;
-  await target.click();
-  await target.fill('');
-  await target.pressSequentially(step.value, { delay: typeMs });
-  return true;
 }
 
 // ---------- run ----------
@@ -343,7 +235,7 @@ type StepLog = {
   /** Where the step's target was just before it ran, and just after (video quality check). */
   visibleBefore?: Visibility;
   visibleAfter?: Visibility;
-  expanded?: string[];
+  staging?: string[];
   typed?: boolean;
   ms: number;
 };
@@ -419,18 +311,37 @@ try {
 
       let target: Locator | undefined;
       if (!passive) {
-        target = stage ? await stageTarget(page, frame, step, entry) : await cursorTarget(frame, step).catch(() => undefined);
+        const tips = await dismissTeachingTips(frame);
+        if (tips) entry.staging = [`closed ${tips} tip(s)`];
+        if (stage) {
+          const staged = await stageStep(page, frame, step, hints, () => awaitFrame(page).catch(() => {}));
+          target = staged.target;
+          const r = staged.report;
+          entry.staging = [
+            ...(entry.staging ?? []),
+            ...r.expanded.map((c) => `expand ${c}`),
+            ...r.collapsedBack.map((c) => `collapse ${c}`),
+            ...r.showMore.map((c) => `show more ${c}`),
+            ...r.scrolled.map((c) => `scroll ${c}`),
+            ...(r.revealed ? ['reveal'] : []),
+          ];
+        } else {
+          target = await findTarget(frame, step).catch(() => undefined);
+        }
         entry.visibleBefore = await visibility(target);
       }
       if (useCursor && !passive) {
         const box = target ? await target.boundingBox().catch(() => null) : null;
         if (box) {
           // boundingBox() is relative to the main viewport, so no iframe offset is needed.
-          await animateClick(page, box.x + box.width / 2, box.y + box.height / 2);
+          // On fields, rest the cursor near the right end so it doesn't cover the typed text.
+          const onField = step.target?.some((t) => t.field) && box.width > 60;
+          const x = onField ? box.x + box.width - 28 : box.x + box.width / 2;
+          await animateClick(page, x, box.y + box.height / 2);
           entry.cursor = 'found';
         }
       }
-      if (stage && target) entry.typed = await typeVisibly(target, step).catch(() => false);
+      if (stage && target) entry.typed = await typeVisibly(target, step, typeMs).catch(() => false);
 
       const slice: Recording = {
         name: recording.name,
@@ -450,7 +361,7 @@ try {
       await awaitFrame(page).catch(() => {});
       if (!passive && step.type !== 'navigate' && step.type !== 'invoke') {
         // Re-locate: the step may have re-rendered the page.
-        entry.visibleAfter = await visibility(await cursorTarget(await awaitFrame(page), step).catch(() => undefined));
+        entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
       }
       await page.screenshot({ path: join(outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
       await page.waitForTimeout(holdMs);
@@ -460,7 +371,7 @@ try {
         ` | cursor ${entry.cursor}` +
         (entry.visibleBefore ? ` | before ${entry.visibleBefore}` : '') +
         (entry.visibleAfter ? ` | after ${entry.visibleAfter}` : '') +
-        (entry.expanded?.length ? ` | expanded ${entry.expanded.join(', ')}` : '') +
+        (entry.staging?.length ? ` | ${entry.staging.join(', ')}` : '') +
         (entry.typed ? ' | typed' : '') +
         ` | ${entry.ms} ms`);
       if (entry.error && !continueOnError) break;

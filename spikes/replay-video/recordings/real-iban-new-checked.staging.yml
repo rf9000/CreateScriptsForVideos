@@ -1,0 +1,4 @@
+# Staging hints for real-iban-new-checked.yml: which FastTab holds each field.
+# The generate stage can emit this from the AL page source (the field's group).
+fieldGroups:
+  IBAN: Transfer

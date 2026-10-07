@@ -31,4 +31,22 @@ const html = await frame.evaluate(() => {
   return out.join('\n');
 });
 console.log(html);
+await frame.locator('span[role=button].ms-nav-columns-caption', { hasText: 'Transfer' }).first().click();
+await page.waitForTimeout(3000);
+console.log('--- masked');
+console.log(await frame.evaluate(() => {
+  const out: string[] = [];
+  const els = Array.from(document.querySelectorAll('[aria-label*="IBAN"], [controlname*="IBAN"], [title*="IBAN"]'));
+  for (const el of els.slice(0, 6)) {
+    out.push(`${el.tagName} role=${el.getAttribute('role')} type=${el.getAttribute('type')} aria-label="${el.getAttribute('aria-label')}" controlname="${el.getAttribute('controlname')}" class="${(el.getAttribute('class') ?? '').slice(0, 70)}"`);
+  }
+  const host = els[0]?.closest('[controlname]') ?? els[0]?.parentElement?.parentElement;
+  out.push((host?.outerHTML ?? 'none').replace(/\s+/g, ' ').slice(0, 1500));
+  return out.join(String.fromCharCode(10));
+}));
+console.log('--- show more');
+console.log(await frame.evaluate(() => Array.from(document.querySelectorAll('a,button,[role=button],span'))
+  .filter((e) => /^show (more|less)$/i.test((e as HTMLElement).innerText?.trim() ?? ''))
+  .map((e) => `${e.tagName} role=${e.getAttribute('role')} class="${(e.getAttribute('class') ?? '').slice(0, 60)}" aria-label="${e.getAttribute('aria-label')}" title="${e.getAttribute('title')}"`)
+  .join(String.fromCharCode(10))));
 await browser.close();
