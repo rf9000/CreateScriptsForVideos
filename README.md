@@ -11,7 +11,7 @@ Watches Azure DevOps for work items tagged `create script` and turns each one in
    |---|---|---|
    | Generate | Agent (`prompts/generate.md`, `demo-data-orchestrator` skill) | PTE folder and recording script |
    | Validate | Agent (`prompts/validate.md`, `demo-data-validator` skill) | Blockers fixed or reported |
-   | Provision | Code (`continia env create` / `start`) | Fresh environment from `CONTINIA_ENV_PROFILE_ID` |
+   | Provision | Code (`continia env create` / `start`) | Fresh environment; profile derived from continia-banking's BC version and `CONTINIA_ENV_LOCALIZATION` |
    | Activate | Code (`continia deps install-by-id`) | Continia activation app installed |
    | Deploy | Agent (`prompts/deploy.md`, `continia-deps` / `continia-deploy` skills) | PTE (and `banking-demo` if needed) published |
    | Verify | Code (`continia env apps`, `env users`) | PTE confirmed installed, credentials collected |

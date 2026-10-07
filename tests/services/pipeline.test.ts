@@ -39,6 +39,11 @@ function stageQuery(byStage: Record<string, unknown>, cost = 1) {
 
 function fakeCli(overrides: Partial<ContiniaCli> = {}): { [K in keyof ContiniaCli]: ReturnType<typeof mock> } {
   return {
+    listProfileVersions: mock(async () => ['28.5.0.0', '29.0.0.0', '30.0.0.0']),
+    listProfiles: mock(async (v: string) => [
+      { id: `base-${v}`, bcVersion: v, localization: 'base', description: `BASE ${v}`, isEnabled: true },
+      { id: `dk-${v}`, bcVersion: v, localization: 'dk', description: `DK ${v}`, isEnabled: true },
+    ]),
     createEnvironment: mock(async () => 'env-1'),
     startEnvironment: mock(async () => {}),
     getEnvironment: mock(async () => ({ id: 'env-1', name: 'Demo #42', url: 'https://bc/env-1', status: 'Running' })),
@@ -64,6 +69,11 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     clearState: mock(() => {}),
     fileExists: mock(() => true),
     readAppName: mock(() => 'Continia Demo Data - Merge Rules'),
+    discoverBankingApps: mock(() => [
+      { dir: 'base-application', name: 'Continia Banking', application: '29.0.0.0', platform: '29.0.0.0' },
+      { dir: 'banking-dk', name: 'Continia Banking DK', application: '29.0.0.0' },
+      { dir: 'banking-w1', name: 'Continia Banking W1', application: '29.0.0.0' },
+    ]),
   } satisfies PipelineDeps;
   return { deps, cli, query, store };
 }
@@ -114,12 +124,41 @@ describe('runPipeline', () => {
     expect(deployPrompt).toContain('Publish banking-demo first: yes');
   });
 
-  test('fails before spending anything when no profile is configured', async () => {
+  test('derives the lowest satisfying profile in the configured localization', async () => {
+    const { deps, cli } = makeDeps();
+    const result = await runPipeline(testConfig({ envProfileId: '', envLocalization: 'dk' }), context, {}, deps);
+    expect(result.status).toBe('success');
+    expect(cli.listProfiles).toHaveBeenCalledWith('29.0.0.0');
+    expect(cli.createEnvironment).toHaveBeenCalledWith('Demo #42 Demo merge rules', 'dk-29.0.0.0');
+  });
+
+  test('a pinned profile skips derivation', async () => {
+    const { deps, cli } = makeDeps();
+    await runPipeline(testConfig({ envProfileId: 'pinned' }), context, {}, deps);
+    expect(cli.listProfileVersions).not.toHaveBeenCalled();
+    expect(cli.createEnvironment).toHaveBeenCalledWith(expect.any(String), 'pinned');
+  });
+
+  test('fails before spending anything when no profile matches', async () => {
     const { deps, query } = makeDeps();
-    const result = await runPipeline(testConfig({ envProfileId: '' }), context, {}, deps);
+    const result = await runPipeline(testConfig({ envProfileId: '', envLocalization: 'zz' }), context, {}, deps);
     expect(result.status).toBe('failed');
+    expect(result.errorMessage).toContain("no enabled 'zz' profile");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  test('fails when continia-banking declares no BC version and nothing is pinned', async () => {
+    const { deps, query } = makeDeps();
+    deps.discoverBankingApps.mockImplementation(() => []);
+    const result = await runPipeline(testConfig({ envProfileId: '' }), context, {}, deps);
     expect(result.errorMessage).toContain('CONTINIA_ENV_PROFILE_ID');
     expect(query).not.toHaveBeenCalled();
+  });
+
+  test('tells the deploy stage which country app to install', async () => {
+    const { deps, query } = makeDeps();
+    await runPipeline(testConfig({ envLocalization: 'dk' }), context, {}, deps);
+    expect(query.mock.calls[2]![0].prompt).toMatch(/Country app for localization 'dk': .*banking-dk/);
   });
 
   test('stops when generate fails and does not provision', async () => {

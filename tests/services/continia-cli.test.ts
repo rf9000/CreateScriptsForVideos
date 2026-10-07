@@ -83,10 +83,33 @@ describe('createContiniaCli', () => {
   });
 });
 
+describe('profiles', () => {
+  test('parses versions and profile rows as the CLI returns them', async () => {
+    const exec = execReturning(
+      { stdout: '["28.5.0.0","29.0.0.0"]' },
+      {
+        stdout: JSON.stringify([
+          { id: 'p1', bcVersion: '29.0.0.0', buildVersion: 'x', localization: 'dk', description: 'DK Business Central 29.0', platform: 'y', isEnabled: true },
+          { id: 'p2', bcVersion: '29.0.0.0', localization: 'base', description: 'BASE', isEnabled: false },
+        ]),
+      },
+    );
+    const cli = createContiniaCli(testConfig(), exec);
+    expect(await cli.listProfileVersions()).toEqual(['28.5.0.0', '29.0.0.0']);
+    expect(await cli.listProfiles('29.0.0.0')).toEqual([
+      { id: 'p1', bcVersion: '29.0.0.0', localization: 'dk', description: 'DK Business Central 29.0', isEnabled: true },
+      { id: 'p2', bcVersion: '29.0.0.0', localization: 'base', description: 'BASE', isEnabled: false },
+    ]);
+    expect(exec.mock.calls[1]![0]).toContain('--bc-version');
+  });
+});
+
 describe('waitForRunning', () => {
   function fakeCli(statuses: string[]): ContiniaCli & { startEnvironment: ReturnType<typeof mock> } {
     let i = 0;
     return {
+      listProfileVersions: mock(async () => []),
+      listProfiles: mock(async () => []),
       createEnvironment: mock(async () => 'e1'),
       startEnvironment: mock(async () => {}),
       getEnvironment: mock(async (): Promise<EnvInfo> => ({

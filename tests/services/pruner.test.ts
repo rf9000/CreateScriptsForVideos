@@ -18,6 +18,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',
+    envLocalization: 'base',
     envReadyTimeoutMinutes: 15,
     stages: {
       generate: { model: 'claude-sonnet-4-6', maxTurns: 150, timeoutMinutes: 60 },

@@ -16,8 +16,10 @@ export interface AppConfig {
   continiaApiToken: string;
   /** Path or command name of the continia CLI (`continia` on PATH in Docker). */
   continiaCliPath: string;
-  /** DemoPortal profile ID every fresh environment is created from. */
+  /** Pins the DemoPortal profile. Empty = derive it from continia-banking's app.json versions. */
   envProfileId: string;
+  /** Localization of the derived profile and the banking country app (base, dk, nl, ...). */
+  envLocalization: string;
   /** How long to wait for a new environment to reach Running. */
   envReadyTimeoutMinutes: number;
   /** Anthropic API key for the agent. Empty = use Claude Code OAuth (~/.claude) instead. */

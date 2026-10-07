@@ -131,8 +131,9 @@ same way here.
 
 ## Operational notes
 
-- **Cost/cleanup:** each processed item provisions a fresh BC environment from
-  `CONTINIA_ENV_PROFILE_ID` and leaves it running. Track environments and prune old ones (still
+- **Cost/cleanup:** each processed item provisions a fresh BC environment and leaves it running.
+  The profile is the lowest published one satisfying continia-banking's `app.json` BC version, in
+  `CONTINIA_ENV_LOCALIZATION` (default `base`); set `CONTINIA_ENV_PROFILE_ID` only to pin one. Track environments and prune old ones (still
   manual). Each agent stage logs its cost, turns and duration; cap spend per stage with
   `STAGE_<S>_MAX_BUDGET_USD`. On-disk
   output is pruned automatically: the watcher deletes `output/<id>/` folders older than

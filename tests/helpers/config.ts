@@ -15,6 +15,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     continiaApiToken: 'cont-token',
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',
+    envLocalization: 'base',
     envReadyTimeoutMinutes: 15,
     anthropicApiKey: '',
     workspaceOutputDir: '/work/output',

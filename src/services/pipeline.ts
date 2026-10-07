@@ -6,6 +6,9 @@ import { runAgentStage, defaultAgentStageDeps } from './agent-stage.ts';
 import type { AgentStageDeps, StageRun } from './agent-stage.ts';
 import { createContiniaCli, waitForRunning } from './continia-cli.ts';
 import type { ContiniaCli } from './continia-cli.ts';
+import { selectProfile } from './profile-selection.ts';
+import { countryAppDir, discoverBankingApps, requiredBcVersion } from '../utils/banking-repo.ts';
+import type { BankingApp } from '../utils/banking-repo.ts';
 
 /**
  * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
@@ -57,6 +60,7 @@ type ValidateOutput = z.infer<typeof validateOutputSchema>;
 export interface PipelineState {
   generate?: GenerateOutput;
   validate?: ValidateOutput;
+  profileId?: string;
   envId?: string;
   activated?: boolean;
   deployGaps?: string[];
@@ -71,6 +75,7 @@ export interface PipelineDeps {
   clearState: (path: string) => void;
   fileExists: (path: string) => boolean;
   readAppName: (ptePath: string) => string;
+  discoverBankingApps: (repoPath: string) => BankingApp[];
 }
 
 export const defaultPipelineDeps: PipelineDeps = {
@@ -85,6 +90,7 @@ export const defaultPipelineDeps: PipelineDeps = {
   },
   clearState: (path) => rmSync(path, { force: true }),
   fileExists: existsSync,
+  discoverBankingApps,
   readAppName: (ptePath) => {
     const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
     if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
@@ -190,8 +196,28 @@ export async function runPipeline(
     return run.ok;
   };
 
-  if (!config.envProfileId) {
-    return failed('CONTINIA_ENV_PROFILE_ID is not configured; cannot provision an environment');
+  // Resolve the profile before any agent spends money: a version or
+  // localization mismatch should fail here, not after generate and validate.
+  const bankingApps = deps.discoverBankingApps(config.continiaBankingPath);
+  if (!state.envId && !state.profileId) {
+    try {
+      if (config.envProfileId) {
+        state.profileId = config.envProfileId;
+      } else {
+        const required = requiredBcVersion(bankingApps);
+        if (!required) {
+          return failed(
+            `no app.json under ${config.continiaBankingPath} declares "application" or "platform"; ` +
+              'set CONTINIA_ENV_PROFILE_ID to pin a profile',
+          );
+        }
+        const profile = await selectProfile(cli, required, config.envLocalization, (m) => log(`  ${m}`));
+        log(`  continia-banking requires BC ${required}: using ${profile.description || profile.id} (${profile.id})`);
+        state.profileId = profile.id;
+      }
+    } catch (err) {
+      return failed(`profile selection failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const brief = buildBrief(context);
@@ -238,8 +264,9 @@ export async function runPipeline(
   try {
     // C. Provision a fresh environment and wait for it.
     if (!state.envId) {
-      log(`  Provisioning environment from profile ${config.envProfileId}...`);
-      state.envId = await cli.createEnvironment(envName(context), config.envProfileId);
+      if (!state.profileId) return failed('no profile resolved for provisioning');
+      log(`  Provisioning environment from profile ${state.profileId}...`);
+      state.envId = await cli.createEnvironment(envName(context), state.profileId);
       save();
     }
     await deps.waitForRunning(cli, state.envId, config.envReadyTimeoutMinutes * 60_000);
@@ -258,6 +285,8 @@ export async function runPipeline(
   }
 
   // E. Deploy: symbols, compile, publish, fix loop.
+  const countryDir = countryAppDir(bankingApps, config.envLocalization);
+  const countryApp = countryDir ? join(resolve(config.continiaBankingPath), countryDir) : undefined;
   if (!state.deployGaps) {
     const deployPrompt = [
       brief,
@@ -266,6 +295,7 @@ export async function runPipeline(
       `- Environment id: ${state.envId}`,
       '- It is running and activated.',
       `- Publish banking-demo first: ${state.generate.needsBankingDemo ? 'yes' : 'no'}`,
+      `- Country app for localization '${config.envLocalization}': ${countryApp ?? 'none found'}`,
     ].join('\n\n');
     const run = await runAgentStage(
       config,

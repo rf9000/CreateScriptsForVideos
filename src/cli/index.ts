@@ -30,7 +30,8 @@ Environment variables:
   CONTINIA_BANKING_PATH     Read-only continia-banking clone (LSP root)
   CONTINIA_API_TOKEN        DemoPortal API token for the continia CLI
   CONTINIA_CLI_PATH         continia CLI path or command (default: continia)
-  CONTINIA_ENV_PROFILE_ID   DemoPortal profile every fresh environment is created from (required)
+  CONTINIA_ENV_PROFILE_ID   Pin the DemoPortal profile (default: derived from continia-banking's app.json BC version)
+  CONTINIA_ENV_LOCALIZATION Localization of the derived profile and banking country app (default: base)
   ENV_READY_TIMEOUT_MINUTES Max wait for a new environment to reach Running (default: 15)
   ANTHROPIC_API_KEY         Anthropic API key (optional; empty = Claude Code OAuth)
   WORKSPACE_OUTPUT_DIR      Writable dir for the generated .md script (default: ./output)

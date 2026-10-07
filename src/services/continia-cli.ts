@@ -46,7 +46,18 @@ export interface EnvUser {
   password: string;
 }
 
+/** One row of `continia env profiles list --bc-version <v> --json`. */
+export interface EnvProfile {
+  id: string;
+  bcVersion: string;
+  localization: string;
+  description: string;
+  isEnabled: boolean;
+}
+
 export interface ContiniaCli {
+  listProfileVersions(): Promise<string[]>;
+  listProfiles(bcVersion: string): Promise<EnvProfile[]>;
   createEnvironment(name: string, profileId: string): Promise<string>;
   startEnvironment(envId: string): Promise<void>;
   getEnvironment(envId: string): Promise<EnvInfo>;
@@ -142,6 +153,23 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
   }
 
   return {
+    async listProfileVersions() {
+      const raw = await run(['env', 'profiles', 'versions']);
+      if (!Array.isArray(raw)) throw new ContiniaCliError('env profiles versions did not return an array');
+      return raw.filter((v): v is string => typeof v === 'string');
+    },
+
+    async listProfiles(bcVersion) {
+      const rows = asArray(await run(['env', 'profiles', 'list', '--bc-version', bcVersion]), ['profiles']);
+      return rows.map((row) => ({
+        id: pickString(row, ['id', 'profileId'], 'profile id'),
+        bcVersion: optionalString(row, ['bcVersion']),
+        localization: optionalString(row, ['localization']),
+        description: optionalString(row, ['description', 'name']),
+        isEnabled: row['isEnabled'] !== false,
+      }));
+    },
+
     async createEnvironment(name, profileId) {
       const raw = await run(['env', 'create', '--name', name, '--profile', profileId]);
       return toEnvInfo(raw).id;
