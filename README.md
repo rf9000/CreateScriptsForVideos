@@ -2,65 +2,57 @@
 
 Watches Azure DevOps for work items tagged `create script` and turns each one into a complete demo package for a Continia Banking feature: a Markdown recording script, a demo-data PTE (AL extension), and a running Business Central environment with everything published.
 
-## What is this?
+## How it works
 
-This pipeline:
-- Polls Azure DevOps for work items tagged `create script` (WIQL narrows candidates, exact tag match happens in code)
-- Runs a Claude agent (orchestrated by `.claude/commands/create-script.md` and the `.claude/skills/` set) to research the feature, generate demo data, and write the recording script
-- Publishes a demo-data PTE and a running BC environment, then reports back to the work item
-- Removes the tag after each attempt — the tag itself is the queue, no persisted state
-- Runs as a watcher (continuous polling) or on-demand (single run)
+1. The watcher polls Azure DevOps for work items with the tag. WIQL narrows candidates by tag and area path; the exact tag match happens in code.
+2. For each item the pipeline runs these steps:
+
+   | Step | Done by | Result |
+   |---|---|---|
+   | Generate | Agent (`prompts/generate.md`, `demo-data-orchestrator` skill) | PTE folder and recording script |
+   | Validate | Agent (`prompts/validate.md`, `demo-data-validator` skill) | Blockers fixed or reported |
+   | Provision | Code (`continia env create` / `start`) | Fresh environment from `CONTINIA_ENV_PROFILE_ID` |
+   | Activate | Code (`continia deps install-by-id`) | Continia activation app installed |
+   | Deploy | Agent (`prompts/deploy.md`, `continia-deps` / `continia-deploy` skills) | PTE (and `banking-demo` if needed) published |
+   | Verify | Code (`continia env apps`, `env users`) | PTE confirmed installed, credentials collected |
+
+3. The script is attached to the work item, and a comment carries the environment URL and credentials. On failure, the comment explains why and lists any environment that is still running.
+4. The tag is removed after each attempt. Re-adding it requests a new run.
+
+Each agent stage has its own model, effort, turn cap, budget cap and timeout. See `.env.example`.
 
 ## Getting started
 
-1. Clone this repo and install dependencies:
-   ```bash
-   git clone <this-repo-url>
-   cd CreateScriptsForVideos
-   bun install
-   ```
-2. Copy `.env.example` to `.env` and fill in your Azure DevOps credentials:
-   ```bash
-   cp .env.example .env
-   ```
-3. Run tests to verify everything works:
-   ```bash
-   bun test
-   ```
-4. Try the CLI:
-   ```bash
-   bun src/cli/index.ts help
-   bun src/cli/index.ts run-once --dry-run
-   ```
-5. Start the watcher:
-   ```bash
-   bun run start
-   ```
+```bash
+bun install
+cp .env.example .env     # fill in Azure DevOps, continia and Anthropic settings
+bun test
+bun src/cli/index.ts help
+bun src/cli/index.ts test-item <id>            # one item, no ADO writes (still provisions an env)
+bun src/cli/index.ts test-item <id> --resume   # continue a failed item from its last good step
+bun run start                                  # watcher
+```
 
-## Customizing for your project
-
-1. **Update `package.json`** — change the `name` field
-2. **Update `.env.example`** — add any project-specific env vars
-3. **Adjust discovery** — set `CREATE_SCRIPT_TAG` / `AZURE_DEVOPS_AREA_PATH` to scope which work items get picked up
-4. **Replace the processor** — edit `src/services/processor.ts` with your business logic
-5. **Update the orchestration prompt** — edit `.claude/commands/create-script.md`
-6. **Update types** — add project-specific interfaces to `src/types/index.ts`
-7. **Update this README** — describe what your project does
+Deployment on the VM (Docker) is described in [DEPLOY.md](DEPLOY.md).
 
 ## Project structure
 
 ```
+prompts/                       # Agent stage prompts (invariants + one per stage)
+.claude/skills/                # Skills the agent stages use
 src/
-├── cli/index.ts              # CLI entry point (watch, run-once, test-item)
-├── config/index.ts           # Zod-based environment variable validation
-├── sdk/azure-devops-client.ts # Azure DevOps REST API client with retry
+├── cli/index.ts               # CLI entry point (watch, run-once, test-item)
+├── config/index.ts            # Zod-based environment validation, per-stage settings
+├── sdk/azure-devops-client.ts # Azure DevOps REST client with retry
 ├── services/
-│   ├── watcher.ts            # Polling loop with graceful shutdown
-│   ├── processor.ts          # Business logic (processor)
-│   └── orchestrator-agent.ts # Claude agent integration
-└── types/index.ts            # Shared TypeScript interfaces
-
-tests/                        # Mirror of src/ with full test coverage
+│   ├── watcher.ts             # Polling loop with graceful shutdown
+│   ├── processor.ts           # Work item in, comment and attachment out
+│   ├── pipeline.ts            # The staged per-item pipeline
+│   ├── agent-stage.ts         # One Agent SDK session per stage
+│   ├── continia-cli.ts        # Typed wrapper over the continia CLI
+│   └── pruner.ts              # Deletes old output folders
+└── types/index.ts             # Shared interfaces
+tests/                         # Mirrors src/
 ```
 
 ## Commands
@@ -69,12 +61,12 @@ tests/                        # Mirror of src/ with full test coverage
 |---------|-------------|
 | `bun run start` | Start the watcher (polls every N minutes) |
 | `bun run once` | Run a single poll cycle and exit |
-| `bun src/cli/index.ts test-item <id>` | Process a single work item in dry-run mode |
+| `bun src/cli/index.ts test-item <id> [--resume]` | Process one work item without ADO writes |
 | `bun test` | Run all tests |
-| `bun run typecheck` | Run TypeScript type checking |
+| `bun run typecheck` | TypeScript type checking |
 
-Add `--dry-run` to any command to skip Azure DevOps writes.
+Add `--dry-run` to `watch` or `run-once` to skip Azure DevOps writes. The pipeline still runs at full cost.
 
 ## Patterns
 
-See [PATTERNS.md](PATTERNS.md) for a quick reference of all architectural patterns used in this codebase.
+See [PATTERNS.md](PATTERNS.md).

@@ -131,15 +131,22 @@ same way here.
 
 ## Operational notes
 
-- **Cost/cleanup:** each processed item provisions a BC environment and leaves it running
-  (`create-script.md` step 6) — track environments and prune old ones (still manual). On-disk
+- **Cost/cleanup:** each processed item provisions a fresh BC environment from
+  `CONTINIA_ENV_PROFILE_ID` and leaves it running. Track environments and prune old ones (still
+  manual). Each agent stage logs its cost, turns and duration; cap spend per stage with
+  `STAGE_<S>_MAX_BUDGET_USD`. On-disk
   output is pruned automatically: the watcher deletes `output/<id>/` folders older than
   `OUTPUT_RETENTION_DAYS` (default 14; set `0` to disable) at the end of each poll cycle. The
   script content survives as the ADO work-item comment and the PTE is rebuildable, so this loses
   nothing irreplaceable.
-- **Tag is the queue (no state file):** discovery is driven entirely by the work-item tag, which
-  is removed after every attempt (success or failure). There is no processed-item state — failures
-  do NOT auto-retry; re-add the tag to request a run again.
+- **Tag is the queue:** discovery is driven entirely by the work-item tag, which is removed after
+  every attempt that reached the pipeline (success or failure). Failures do not auto-retry; re-add
+  the tag to request a fresh run. A failure before the pipeline starts (e.g. Azure DevOps briefly
+  unavailable) keeps the tag, so the next cycle retries it.
+- **Resuming a failed item:** each item's output folder holds `pipeline-state.json` (no
+  credentials). Run `docker compose exec create-scripts-for-videos bun src/cli/index.ts test-item
+  <id> --resume` to continue from the last good step, e.g. reuse the generated PTE and the
+  provisioned environment after a deploy failure.
 - **Never write into continia-banking:** `PTE_OUTPUT_DIR`/`WORKSPACE_OUTPUT_DIR` point at the
   writable `/app/output` volume, separate from the `:ro` banking mount. Keep it that way.
 - **Output is browsable on the host:** `/app/output` is bind-mounted to
