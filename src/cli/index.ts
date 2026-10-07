@@ -3,7 +3,9 @@
 import { loadConfig } from '../config/index.ts';
 import { startWatcher, runPollCycle } from '../services/watcher.ts';
 import { getWorkItem } from '../sdk/azure-devops-client.ts';
-import { processItem } from '../services/processor.ts';
+import { processItem, defaultProcessorDeps } from '../services/processor.ts';
+import { briefWorkItem, parseBrief } from '../services/brief.ts';
+import { existsSync, readFileSync } from 'fs';
 
 const HELP = `
 Create Scripts For Videos — Azure DevOps work-item driven demo script generator
@@ -15,6 +17,8 @@ Commands:
   watch            Start the long-running watcher (polls every N minutes)
   run-once         Run a single poll cycle and exit
   test-item <id>   Process a single work item (dry-run, no ADO writes)
+  test-item --brief <file.md> [--id <n>]
+                   Process a local brief instead (# Title, then description); no ADO at all
   help             Show this help message
 
 Options:
@@ -84,22 +88,47 @@ switch (command) {
   }
 
   case 'test-item': {
+    const briefIndex = process.argv.indexOf('--brief');
+    const briefPath = briefIndex >= 0 ? process.argv[briefIndex + 1] : undefined;
     const itemIdArg = process.argv[3];
-    if (!itemIdArg || isNaN(Number(itemIdArg))) {
-      console.error('Usage: create-scripts test-item <work-item-id> [--resume] [--video]');
-      process.exitCode = 1;
-      break;
-    }
-    const config = loadConfig();
-    config.dryRun = true;
-    console.log(
-      `[DRY RUN] Testing processing for work item #${itemIdArg} (no ADO writes; pipeline runs at full cost)\n`,
-    );
-    const item = await getWorkItem(config, Number(itemIdArg));
-    const result = await processItem(config, item, undefined, {
+    const options = {
       resume: process.argv.includes('--resume'),
       ...(process.argv.includes('--video') ? { mode: 'video' as const } : {}),
-    });
+    };
+    let result;
+    if (briefPath) {
+      // Local brief: no Azure DevOps reads or writes at all.
+      if (!existsSync(briefPath)) {
+        console.error(`Brief not found: ${briefPath}`);
+        process.exitCode = 1;
+        break;
+      }
+      const idIndex = process.argv.indexOf('--id');
+      const id = idIndex >= 0 ? Number(process.argv[idIndex + 1]) : undefined;
+      const brief = parseBrief(readFileSync(briefPath, 'utf-8'), briefPath, id);
+      const config = loadConfig(process.env, { requireAdo: false });
+      config.dryRun = true;
+      console.log(`[DRY RUN] Testing brief "${brief.title}" as item #${brief.id} (no ADO; pipeline runs at full cost)\n`);
+      result = await processItem(
+        config,
+        briefWorkItem(brief),
+        { ...defaultProcessorDeps, fetchComments: async () => [] },
+        options,
+      );
+    } else {
+      if (!itemIdArg || isNaN(Number(itemIdArg))) {
+        console.error('Usage: create-scripts test-item <work-item-id> | --brief <file.md> [--id <n>] [--resume] [--video]');
+        process.exitCode = 1;
+        break;
+      }
+      const config = loadConfig();
+      config.dryRun = true;
+      console.log(
+        `[DRY RUN] Testing processing for work item #${itemIdArg} (no ADO writes; pipeline runs at full cost)\n`,
+      );
+      const item = await getWorkItem(config, Number(itemIdArg));
+      result = await processItem(config, item, undefined, options);
+    }
     console.log(
       `\nDone: ${result.processed ? 'processed' : 'failed'}` +
         `${result.error ? ` (${result.error})` : ''} — $${(result.costUsd ?? 0).toFixed(4)}`,

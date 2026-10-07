@@ -32,6 +32,7 @@ bun test
 bun src/cli/index.ts help
 bun src/cli/index.ts test-item <id>            # one item, no ADO writes (still provisions an env)
 bun src/cli/index.ts test-item <id> --resume   # continue a failed item from its last good step
+bun src/cli/index.ts test-item --brief brief.md --video   # local brief (# Title + description), no ADO
 bun run start                                  # watcher
 ```
 

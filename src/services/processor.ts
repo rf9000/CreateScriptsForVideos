@@ -39,7 +39,7 @@ export interface ProcessorDeps {
   fileSize: (path: string) => number;
 }
 
-const defaultDeps: ProcessorDeps = {
+export const defaultProcessorDeps: ProcessorDeps = {
   fetchComments: sdk.getWorkItemComments,
   runPipeline: (config, context, options) => runPipeline(config, context, options),
   readScript: (path) => readFileSync(path, 'utf-8'),
@@ -143,7 +143,7 @@ function buildFailureComment(result: ScriptResult): string {
 export async function processItem(
   config: AppConfig,
   item: WorkItemResponse,
-  deps: ProcessorDeps = defaultDeps,
+  deps: ProcessorDeps = defaultProcessorDeps,
   options: PipelineOptions = {},
 ): Promise<ItemProcessResult> {
   const title = String(item.fields['System.Title'] ?? '(untitled)');

@@ -23,6 +23,16 @@ describe("loadConfig", () => {
     expect(() => loadConfig(env)).toThrow("Invalid configuration");
   });
 
+  it("does not require Azure DevOps settings when requireAdo is false (local briefs)", () => {
+    const env = { ...validEnv };
+    delete env.AZURE_DEVOPS_PAT;
+    delete env.AZURE_DEVOPS_ORG;
+    delete env.AZURE_DEVOPS_PROJECT;
+    const config = loadConfig(env, { requireAdo: false });
+    expect(config.pat).toBe("");
+    expect(config.org).toBe("");
+  });
+
   it("throws when AZURE_DEVOPS_ORG is missing", () => {
     const env = { ...validEnv };
     delete env.AZURE_DEVOPS_ORG;

@@ -6,9 +6,10 @@ const optionalNumber = z.coerce.number().positive().optional();
 const effortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 
 const envSchema = z.object({
-  AZURE_DEVOPS_PAT: z.string().min(1, "AZURE_DEVOPS_PAT is required"),
-  AZURE_DEVOPS_ORG: z.string().min(1, "AZURE_DEVOPS_ORG is required"),
-  AZURE_DEVOPS_PROJECT: z.string().min(1, "AZURE_DEVOPS_PROJECT is required"),
+  // Required unless running a local brief (checked in loadConfig).
+  AZURE_DEVOPS_PAT: z.string().default(""),
+  AZURE_DEVOPS_ORG: z.string().default(""),
+  AZURE_DEVOPS_PROJECT: z.string().default(""),
   AZURE_DEVOPS_AREA_PATH: z.string().default(""),
   CREATE_SCRIPT_TAG: z.string().default("create script"),
   CREATE_VIDEO_TAG: z.string().default("create video"),
@@ -77,6 +78,7 @@ function loadStageConfig(
 
 export function loadConfig(
   env: Record<string, string | undefined> = process.env,
+  options: { requireAdo?: boolean } = {},
 ): AppConfig {
   // Treat empty strings as unset so `KEY=` in .env falls back to the default.
   const nonEmpty = Object.fromEntries(
@@ -92,6 +94,12 @@ export function loadConfig(
   }
 
   const parsed = result.data;
+  if (options.requireAdo ?? true) {
+    const missing = (["AZURE_DEVOPS_PAT", "AZURE_DEVOPS_ORG", "AZURE_DEVOPS_PROJECT"] as const)
+      .filter((key) => !parsed[key])
+      .map((key) => `  - ${key}: ${key} is required`);
+    if (missing.length) throw new Error(`Invalid configuration:\n${missing.join("\n")}`);
+  }
   const workspaceOutputDir = parsed.WORKSPACE_OUTPUT_DIR;
   const stage = (name: StageName) =>
     loadStageConfig(name, env, parsed.CLAUDE_MODEL, parsed.CLAUDE_EFFORT);
