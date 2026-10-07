@@ -31,9 +31,12 @@ Two work-item tags, one pipeline:
 
 ## Setup
 
-1. An environment with Continia Banking and demo data, e.g. one of yours with `banking-demo`
-   installed. Get credentials with `continia env users <envId> --json`.
-2. `cp .env.example .env` and fill in `BC_URL`, `BC_USER`, `BC_PASS`.
+1. An environment with Continia Banking and demo data, activated with
+   `.tools/continia.exe --auth-method api-token deps install-by-id <envId> c3755ece-dab0-4d16-987d-040661f18522 --json`.
+2. Nothing else to configure: pass `--env <envId>` and the harness reads the URL and login with
+   the continia CLI (`CONTINIA_API_TOKEN` comes from the repo `.env`; the CLI defaults to
+   `../../.tools/continia.exe`). To point at a non-DemoPortal client instead, set `BC_URL`,
+   `BC_USER`, `BC_PASS` in `spikes/replay-video/.env`.
 3. `npm run setup` (installs Playwright 1.55.1, the version bc-replay pins, and Chromium).
 4. **Record the flow in BC** (needed for A and B): open Bank Account Communication Setup
    (page 71553605), Settings ⚙ → *Page Scripting* → *Start new recording*, then perform:
@@ -45,9 +48,9 @@ Two work-item tags, one pipeline:
 ## Run
 
 ```bash
-npm run whole    -- --recording recordings/real-bank-acc-com-setup.yml
-npm run per-step -- --recording recordings/real-bank-acc-com-setup.yml --headed
-npm run per-step -- --recording recordings/v1-bank-acc-com-setup.yml --continue
+npm run whole    -- --env <envId> --recording recordings/real-bank-acc-com-setup.yml
+npm run per-step -- --env <envId> --recording recordings/real-bank-acc-com-setup.yml --headed
+npm run per-step -- --env <envId> --recording recordings/v1-bank-acc-com-setup.yml --continue
 ```
 
 Options: `--headed`, `--hold-ms 1500` (pause after each step, stands in for narration),

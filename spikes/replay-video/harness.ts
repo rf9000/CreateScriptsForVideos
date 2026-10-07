@@ -8,14 +8,15 @@
  *                     before each step and a hold after it (= how a demo recorder
  *                     would pace steps to narration)
  *
- * Usage: node --env-file=.env harness.ts --recording recordings/x.yml --mode per-step [--headed]
+ * Usage: node harness.ts --env <envId> --recording recordings/x.yml --mode per-step [--headed]
  *        [--hold-ms 1500] [--keep-start] [--no-cursor] [--continue] [--out dir]
- * Env:   BC_URL (web client start address), BC_USER, BC_PASS (UserPassword auth)
+ * Env:   CONTINIA_API_TOKEN (from the repo .env) for --env; or BC_URL, BC_USER, BC_PASS instead
  */
 import { chromium } from 'playwright';
 import type { Frame, Locator, Page } from 'playwright';
 import { parse, stringify } from 'yaml';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
 import { basename, join, resolve } from 'path';
 import { animateClick, injectCursor } from './cursor.ts';
 
@@ -60,12 +61,47 @@ const headed = flag('headed');
 const keepStart = flag('keep-start');
 const useCursor = !flag('no-cursor');
 const continueOnError = flag('continue');
-const bcUrl = process.env['BC_URL'];
-const bcUser = process.env['BC_USER'];
-const bcPass = process.env['BC_PASS'] ?? '';
+// Connection: either --env <envId> (URL and login looked up with the continia CLI)
+// or BC_URL / BC_USER / BC_PASS set explicitly.
+const envId = opt('env') ?? process.env['BC_ENV_ID'];
+let bcUrl = process.env['BC_URL'];
+let bcUser = process.env['BC_USER'];
+let bcPass = process.env['BC_PASS'] ?? '';
+if (envId) {
+  try {
+    ({ bcUrl, bcUser, bcPass } = resolveEnvironment(envId));
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(2);
+  }
+}
 if (!bcUrl || !bcUser) {
-  console.error('Set BC_URL and BC_USER (and BC_PASS) in spikes/replay-video/.env');
+  console.error('Pass --env <envId> (or set BC_ENV_ID), or set BC_URL and BC_USER (and BC_PASS)');
   process.exit(2);
+}
+
+/** Look up the web client URL and a login for a DemoPortal environment. */
+function resolveEnvironment(id: string): { bcUrl: string; bcUser: string; bcPass: string } {
+  const cli = process.env['CONTINIA_CLI_PATH'] ?? resolve('../../.tools/continia.exe');
+  const run = (args: string[]): any => {
+    const r = spawnSync(cli, ['--auth-method', 'api-token', ...args, '--json'], { encoding: 'utf-8' });
+    if (r.status !== 0) {
+      throw new Error(`continia ${args.join(' ')} failed (${r.status}): ${(r.stderr || r.error?.message || '').slice(0, 300)}`);
+    }
+    return JSON.parse(r.stdout);
+  };
+  if (!process.env['CONTINIA_API_TOKEN']) throw new Error('CONTINIA_API_TOKEN is not set (it is read from the repo .env)');
+  const env = run(['env', 'get', id]);
+  if (String(env.status).toLowerCase() !== 'running') {
+    throw new Error(`environment ${id} is ${env.status}; start it first (continia env start ${id})`);
+  }
+  const users = run(['env', 'users', id]);
+  const rows: any[] = Array.isArray(users) ? users : (users.users ?? []);
+  const user = rows.find((u) => u.password) ?? rows[0];
+  const name = user?.username ?? user?.userName ?? user?.name;
+  if (!env.url || !name) throw new Error(`could not read url/user for ${id} (env keys: ${Object.keys(env).join(', ')})`);
+  console.log(`Environment ${id}: ${env.description ?? ''} ${env.url} (BC ${env.bcVersion ?? '?'}) as ${name}`);
+  return { bcUrl: String(env.url).replace(/\/?$/, '/'), bcUser: String(name), bcPass: String(user.password ?? '') };
 }
 
 const recording = parse(readFileSync(recordingPath, 'utf-8')) as Recording;
