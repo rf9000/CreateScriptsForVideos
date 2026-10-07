@@ -1,0 +1,15 @@
+{
+  "name": "spike-replay-video",
+  "private": true,
+  "type": "module",
+  "description": "Spike: can BC's own Page Scripting engine drive demo recordings reliably?",
+  "scripts": {
+    "setup": "npm install && npx playwright install chromium",
+    "whole": "node --env-file=.env harness.ts --mode whole",
+    "per-step": "node --env-file=.env harness.ts --mode per-step"
+  },
+  "dependencies": {
+    "playwright": "1.55.1",
+    "yaml": "2.8.1"
+  }
+}

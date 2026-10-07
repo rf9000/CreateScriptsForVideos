@@ -1,0 +1,99 @@
+# Converted from V1 (continia-demo-generator output/bank-acc-com-setup-direct-reset, the run
+# where 7 of 16 steps failed). LLM-authored, NOT recorded by BC: some steps (e.g. picking
+# "Rabobank ISO20022" in a dialog by caption) may not be valid Page Scripting. Experiment C
+# checks whether BC's engine accepts this shape; compare with a real recording of the flow.
+name: Bank Acc. Com. Setup - Direct with Customization and Reset
+description: Switch to direct transfer, customize individual records, then reset to defaults using Set
+  Default Communication
+start:
+  profile: BUSINESS MANAGER
+  page: Bank Account Communication Setup
+steps:
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  row: 1
+  description: Select the first communication setup record to see current state
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: All Direct
+  description: Click All Direct to switch all records to direct transfer
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: Rabobank ISO20022
+  description: Select Rabobank ISO20022 from the bank system selection menu
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: OK
+  description: Confirm the bank system selection
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  row: 1
+  description: Records are now set to Direct transfer - observe the updated values
+- type: scope
+  description: Manually disable the Account Statement communication record
+  steps:
+  - type: action
+    target:
+    - page: Bank Account Communication Setup
+    row: 2
+    description: Select the Account Statement record
+  - type: input
+    target:
+    - page: Bank Account Communication Setup
+    - field: Enabled
+    value: 'false'
+    description: Toggle Enabled to false for Account Statement
+- type: scope
+  description: Manually disable the Status communication record
+  steps:
+  - type: action
+    target:
+    - page: Bank Account Communication Setup
+    row: 3
+    description: Select the Status record
+  - type: input
+    target:
+    - page: Bank Account Communication Setup
+    - field: Enabled
+    value: 'false'
+    description: Toggle Enabled to false for Status
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  row: 1
+  description: Review the customized state - Payment is enabled, Account Statement and Status are disabled
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: Set Default Communication
+  description: Click Set Default Communication to reset all records to their default values
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: Rabobank ISO20022
+  description: Select Rabobank ISO20022 as the bank system to reset
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: OK
+  description: Confirm the bank system selection
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: Direct
+  description: Select Direct as the target communication type
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  caption: OK
+  description: Confirm the communication type selection
+- type: action
+  target:
+  - page: Bank Account Communication Setup
+  row: 1
+  description: Records have been reset to their default Direct transfer settings
