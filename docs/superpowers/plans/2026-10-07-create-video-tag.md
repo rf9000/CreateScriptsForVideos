@@ -915,15 +915,14 @@ describe('parseDuration', () => {
   test('reads the Duration line from ffmpeg -i output', () => {
     expect(parseDuration('  Duration: 00:00:04.52, start: 0.000000')).toBe(4520);
   });
-  test('0 when absent', () => {
-    expect(parseDuration('nothing')).toBe(0);
+  test('throws when ffmpeg printed no Duration (same as V1)', () => {
+    expect(() => parseDuration('nothing')).toThrow('Could not parse audio duration');
   });
 });
 
 describe('expandAbbreviations', () => {
   test('expands BC abbreviations for speech', () => {
-    expect(expandAbbreviations('Bank Acc. No.')).toBe(expandAbbreviations('Bank Acc. No.'));
-    expect(expandAbbreviations('Open the Bank Acc. card')).toContain('Account');
+    expect(expandAbbreviations('Bank Acc. No.')).toBe('Bank Account Number');
   });
 });
 
@@ -951,7 +950,7 @@ Run: `bun test tests/video/narration.test.ts` — Expected: FAIL, module not fou
 
 - [ ] **Step 3: Implement `src/video/narration.ts`**
 
-Copy V1's `expandAbbreviations` and its abbreviation table and `parseDuration` verbatim from `C:\GeneralDev\continia-demo-generator\src\narrator.ts` (lines 95–129), and the voice table from V1 `locale-voices.ts`. Then:
+Copy V1's `expandAbbreviations` and its abbreviation table and `parseDuration` verbatim from `C:\GeneralDev\continia-demo-generator\src\narrator.ts` (the `BC_ABBREVIATIONS` table, `expandAbbreviations` and `parseDuration`: lines 79–121; add `export` to both functions). `parseDuration` throws when there is no Duration line. Then add the rest:
 
 ```ts
 import OpenAI from 'openai';
