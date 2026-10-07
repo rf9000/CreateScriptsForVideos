@@ -61,6 +61,14 @@ describe('runAgentStage', () => {
     expect(options).not.toHaveProperty('allowedTools');
   });
 
+  test('the output schema carries no $schema draft marker (the CLI rejects draft 2020-12)', async () => {
+    const d = deps([success({ status: 'success', note: '' })]);
+    await runAgentStage(testConfig(), 'generate', ['g'], 'p', schema, d);
+    const { options } = d.query.mock.calls[0]![0] as { options: Options };
+    expect(options.outputFormat?.schema).not.toHaveProperty('$schema');
+    expect(options.outputFormat?.schema).toMatchObject({ type: 'object' });
+  });
+
   test('omits effort and budget when not configured', async () => {
     const d = deps([success({ status: 'success', note: '' })]);
     await runAgentStage(testConfig(), 'deploy', ['deploy'], 'p', schema, d);

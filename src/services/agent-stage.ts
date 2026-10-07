@@ -113,7 +113,8 @@ export async function runAgentStage<S extends z.ZodType>(
 
   try {
     const systemAppend = promptNames.map((name) => deps.readPrompt(name)).join('\n\n');
-    const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
+    // zod stamps $schema: draft 2020-12, which the Claude Code CLI's validator rejects.
+    const { $schema: _draft, ...jsonSchema } = z.toJSONSchema(schema) as Record<string, unknown>;
     const options = buildStageOptions(config, stage, systemAppend, jsonSchema, abortController);
 
     log(`  Stage ${stage}: starting (${settings.model}${settings.effort ? `, effort ${settings.effort}` : ''})`);
