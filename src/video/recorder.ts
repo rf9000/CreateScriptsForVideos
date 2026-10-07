@@ -63,6 +63,16 @@ export function sliceFor(rec: Recording, index: number): Recording {
   };
 }
 
+/** Run cosmetic staging; a failure is noted on the step and swallowed. */
+export async function stageSafely<T>(fn: () => Promise<T>, notes: string[]): Promise<T | undefined> {
+  try {
+    return await fn();
+  } catch (err) {
+    notes.push(`staging failed: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
+
 /** How long to hold after a step: narration clip + buffer (min 1.5 s), else the default. */
 export function holdFor(index: number, clipMs: Map<number, number>, defaultMs: number): number {
   const clip = clipMs.get(index);
@@ -92,46 +102,53 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
       const t0 = Date.now();
       const passive = PASSIVE.has(step.type);
       const entry: StepLog = { index, type: step.type, cursor: passive ? 'n/a' : 'missing', staging: [], typed: false, ms: 0 };
-      const frame = await awaitFrame(page);
-      let target: Locator | undefined;
-      if (!passive) {
-        const tips = await dismissTeachingTips(frame);
-        if (tips) entry.staging.push(`closed ${tips} tip(s)`);
-        const staged = await stage(page, frame, step, opts.hints, () => awaitFrame(page).catch(() => {}));
-        target = staged.target;
-        const r = staged.report;
-        entry.staging.push(
-          ...r.expanded.map((c) => `expand ${c}`),
-          ...r.collapsedBack.map((c) => `collapse ${c}`),
-          ...r.showMore.map((c) => `show more ${c}`),
-          ...r.scrolled.map((c) => `scroll ${c}`),
-          ...(r.revealed ? ['reveal'] : []),
-        );
-        entry.visibleBefore = await visibility(target);
-        const box = target ? await target.boundingBox().catch(() => null) : null;
-        if (box) {
-          // On fields, rest the cursor near the right end so it doesn't cover the typed text.
-          const onField = step.target?.some((t) => t['field']) && box.width > 60;
-          await animateClick(page, onField ? box.x + box.width - 28 : box.x + box.width / 2, box.y + box.height / 2);
-          entry.cursor = 'found';
-        }
-        if (target) entry.typed = await typeVisibly(target, step, TYPE_DELAY_MS).catch(() => false);
-      }
-
-      const stepStart = Date.now() - videoStart;
       try {
-        const result = await play(page, sliceFor(opts.recording, index));
-        entry.error = errorText(result.error) ?? errorText(result.fileErrors);
+        const frame = await awaitFrame(page);
+        if (!passive) {
+          // Staging only frames the shot; if it fails, the step still runs.
+          await stageSafely(async () => {
+            const tips = await dismissTeachingTips(frame);
+            if (tips) entry.staging.push(`closed ${tips} tip(s)`);
+            const staged = await stage(page, frame, step, opts.hints, () => awaitFrame(page).catch(() => {}));
+            const target: Locator | undefined = staged.target;
+            const r = staged.report;
+            entry.staging.push(
+              ...r.expanded.map((c) => `expand ${c}`),
+              ...r.collapsedBack.map((c) => `collapse ${c}`),
+              ...r.showMore.map((c) => `show more ${c}`),
+              ...r.scrolled.map((c) => `scroll ${c}`),
+              ...(r.revealed ? ['reveal'] : []),
+            );
+            entry.visibleBefore = await visibility(target);
+            const box = target ? await target.boundingBox().catch(() => null) : null;
+            if (box) {
+              // On fields, rest the cursor near the right end so it doesn't cover the typed text.
+              const onField = step.target?.some((t) => t['field']) && box.width > 60;
+              await animateClick(page, onField ? box.x + box.width - 28 : box.x + box.width / 2, box.y + box.height / 2);
+              entry.cursor = 'found';
+            }
+            if (target) entry.typed = await typeVisibly(target, step, TYPE_DELAY_MS).catch(() => false);
+          }, entry.staging);
+        }
+
+        const stepStart = Date.now() - videoStart;
+        try {
+          const result = await play(page, sliceFor(opts.recording, index));
+          entry.error = errorText(result.error) ?? errorText(result.fileErrors);
+        } catch (err) {
+          entry.error = `recorder: ${String(err)}`;
+        }
+        await awaitFrame(page).catch(() => {});
+        if (!entry.error && !passive && step.type !== 'navigate' && step.type !== 'invoke') {
+          entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
+        }
+        await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
+        if (!entry.error) await page.waitForTimeout(holdFor(index, opts.holds, DEFAULT_HOLD_MS));
+        timing.steps.push({ stepIndex: index, startMs: stepStart, endMs: Date.now() - videoStart });
       } catch (err) {
-        entry.error = `recorder: ${String(err)}`;
+        // Anything else that breaks inside a step (BC never idle, page closed) fails that step.
+        entry.error = entry.error ?? `recorder: ${String(err)}`;
       }
-      await awaitFrame(page).catch(() => {});
-      if (!passive && step.type !== 'navigate' && step.type !== 'invoke') {
-        entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
-      }
-      await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
-      await page.waitForTimeout(holdFor(index, opts.holds, DEFAULT_HOLD_MS));
-      timing.steps.push({ stepIndex: index, startMs: stepStart, endMs: Date.now() - videoStart });
       entry.ms = Date.now() - t0;
       steps.push(entry);
       if (entry.error) {

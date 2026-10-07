@@ -212,9 +212,14 @@ export async function processItem(
         videoNote = `<p>The demo video is too large to attach (${Math.round(size / 1048576)} MB). It is on the server at <code>${escapeHtml(result.video.path)}</code>.</p>`;
       } else {
         const videoName = `demo-video-${item.id}.mp4`;
-        const video = await deps.uploadAttachment(config, videoName, deps.readVideo(result.video.path));
-        await deps.linkAttachment(config, item.id, video.url, `Demo video for ${result.feature ?? title}`);
-        videoNote = `<p>The demo video is attached as <code>${escapeHtml(videoName)}</code>. It is a draft: watch it before sharing.</p>`;
+        try {
+          const video = await deps.uploadAttachment(config, videoName, deps.readVideo(result.video.path));
+          await deps.linkAttachment(config, item.id, video.url, `Demo video for ${result.feature ?? title}`);
+          videoNote = `<p>The demo video is attached as <code>${escapeHtml(videoName)}</code>. It is a draft: watch it before sharing.</p>`;
+        } catch (err) {
+          // The script and env are delivered; a failed upload only costs the video attachment.
+          videoNote = `<p><strong>The demo video could not be attached:</strong> ${escapeHtml(String(err))}. It is on the server at <code>${escapeHtml(result.video.path)}</code>.</p>`;
+        }
       }
     } else if (result.video && !result.video.ok) {
       videoNote = `<p><strong>No video was attached:</strong> ${escapeHtml(result.video.error ?? 'unknown error')}</p>`;
@@ -258,7 +263,8 @@ export async function processItem(
         const tags = String(item.fields['System.Tags'] ?? '').split(';').map((t) => t.trim().toLowerCase());
         const optIns = [config.createScriptTag, config.createVideoTag].filter((t) => tags.includes(t.toLowerCase()));
         for (const tag of optIns.length ? optIns : [config.createScriptTag]) {
-          await deps.removeTag(config, item.id, tag);
+          // Each tag on its own: a failed removal must not keep the other tag (and the item) queued.
+          await deps.removeTag(config, item.id, tag).catch((err) => log(`  Item #${item.id}: Failed to remove tag "${tag}" — ${err}`));
         }
       } catch (err) {
         log(`  Item #${item.id}: Failed to remove tag — ${err}`);

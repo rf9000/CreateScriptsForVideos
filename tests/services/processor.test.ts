@@ -426,3 +426,34 @@ describe('processItem — video items', () => {
     expect(removed.sort()).toEqual(['create script', 'create video']);
   });
 });
+
+describe('processItem — review fixes', () => {
+  test('a failed removal of one tag still removes the other', async () => {
+    const deps = makeDeps({
+      removeTag: mock(async (_c: unknown, _id: number, tag: string) => {
+        if (tag === 'create script') throw new Error('409');
+      }),
+    });
+    const item = mockWorkItem({ fields: { ...mockWorkItem().fields, 'System.Tags': 'create script; create video' } });
+    await processItem(mockConfig(), item, deps);
+    const removed = (deps.removeTag as ReturnType<typeof mock>).mock.calls.map((c) => c[2]);
+    expect(removed.sort()).toEqual(['create script', 'create video']);
+  });
+
+  test('a failed video upload is reported in the env comment, not as a failed run', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async () => ({ ...successResult, video: { ok: true, path: '/out/42/demo.mp4' } })),
+      uploadAttachment: mock(async (_c: unknown, name: string) => {
+        if (name.endsWith('.mp4')) throw new Error('413 Request Entity Too Large');
+        return { id: 'att-1', url: 'https://att/att-1' };
+      }),
+    });
+    const item = mockWorkItem({ fields: { ...mockWorkItem().fields, 'System.Tags': 'create video' } });
+    const result = await processItem(mockConfig(), item, deps);
+    expect(result.processed).toBe(true);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('Recording environment ready');
+    expect(html).toContain('could not be attached');
+    expect(html).toContain('413 Request Entity Too Large');
+  });
+});

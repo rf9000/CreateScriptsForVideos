@@ -2,7 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { mkdtempSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { formatAssTime, writeSubtitles } from '../../src/video/compose.ts';
+import { COMPOSE_TIMEOUT_MS, ENCODER_ARGS, formatAssTime, writeSubtitles } from '../../src/video/compose.ts';
 
 describe('formatAssTime', () => {
   test('H:MM:SS.cc', () => {
@@ -22,5 +22,13 @@ describe('writeSubtitles', () => {
     expect(text).toContain('PlayResX: 1920');
     expect(text).toContain('Dialogue: 0,0:00:04.00,0:00:06.00');
     expect(existsSync(join(dir, 'demo.srt'))).toBe(true);
+  });
+});
+
+describe('encoding budget', () => {
+  test('allows 10 minutes and uses a fast x264 preset (VM encodes are slower than real time)', () => {
+    expect(COMPOSE_TIMEOUT_MS).toBe(600_000);
+    expect(ENCODER_ARGS).toContain('-preset veryfast');
+    expect(ENCODER_ARGS).toContain('-c:v libx264');
   });
 });

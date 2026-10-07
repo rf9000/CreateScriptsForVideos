@@ -14,6 +14,11 @@ export type Timing = { trimStartMs: number; steps: Array<{ stepIndex: number; st
 
 export type ComposeResult = { ok: boolean; videoPath?: string; error?: string };
 
+/** A small Linux VM encodes 1080p below real time; give long demos room. */
+export const COMPOSE_TIMEOUT_MS = 600_000;
+/** veryfast keeps encode time down at a small size cost; screen recordings compress well. */
+export const ENCODER_ARGS = ['-c:v libx264', '-preset veryfast', '-c:a aac', '-b:a 192k'];
+
 const FADE_IN_MS = 300;
 const FADE_OUT_MS = 400;
 const MAX_WORDS_PER_CHUNK = 12;
@@ -240,9 +245,7 @@ export function composeVideo(options: {
     // at trim-adjusted positions (stepStartMs - trimMs), so the audio track
     // is already aligned to the trimmed video timeline.
 
-    cmdParts.push('-c:v libx264');
-    cmdParts.push('-c:a aac');
-    cmdParts.push('-b:a 192k');
+    cmdParts.push(...ENCODER_ARGS);
     cmdParts.push('-map 0:v:0');
     cmdParts.push('-map 1:a:0');
     // Don't use -shortest: let the video play fully even if audio is shorter
@@ -252,7 +255,7 @@ export function composeVideo(options: {
     const cmd = cmdParts.join(' ');
 
     try {
-      execSync(cmd, { stdio: 'pipe', timeout: 120_000 });
+      execSync(cmd, { stdio: 'pipe', timeout: COMPOSE_TIMEOUT_MS });
     } catch (e: unknown) {
       const stderr = (e as { stderr?: Buffer }).stderr?.toString() ?? '';
       throw new Error(`ffmpeg failed: ${stderr.slice(-500)}`);

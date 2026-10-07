@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { holdFor, sliceFor } from '../../src/video/recorder.ts';
+import { holdFor, sliceFor, stageSafely } from '../../src/video/recorder.ts';
 import { errorText } from '../../src/video/bc-session.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
@@ -32,5 +32,22 @@ describe('errorText', () => {
     expect(errorText(undefined)).toBeUndefined();
     expect(errorText('boom')).toBe('boom');
     expect(errorText({ message: "Field 'X' was not found." })).toBe("Field 'X' was not found.");
+  });
+});
+
+describe('stageSafely', () => {
+  test('a staging error is noted and swallowed: staging is cosmetic', async () => {
+    const notes: string[] = [];
+    const result = await stageSafely(async () => {
+      throw new Error('locator.click: Timeout 30000ms exceeded');
+    }, notes);
+    expect(result).toBeUndefined();
+    expect(notes).toEqual(['staging failed: locator.click: Timeout 30000ms exceeded']);
+  });
+
+  test('passes the result through when staging works', async () => {
+    const notes: string[] = [];
+    expect(await stageSafely(async () => 42, notes)).toBe(42);
+    expect(notes).toEqual([]);
   });
 });

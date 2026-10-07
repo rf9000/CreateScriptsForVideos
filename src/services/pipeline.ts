@@ -67,6 +67,10 @@ export interface PipelineState {
   envId?: string;
   activated?: boolean;
   deployGaps?: string[];
+  /** Item mode of the first attempt, so a resume keeps it. */
+  mode?: ItemMode;
+  /** A recording already ran on this environment (its demo data may have changed). */
+  videoAttempted?: boolean;
 }
 
 export interface PipelineDeps {
@@ -178,6 +182,9 @@ export async function runPipeline(
   if (!options.resume) deps.clearState(paths.statePath);
   const state: PipelineState = (options.resume && deps.loadState(paths.statePath)) || {};
   const save = () => deps.saveState(paths.statePath, state);
+  // Resume keeps the mode of the first attempt (the tag is gone by then).
+  const mode: ItemMode = options.mode ?? state.mode ?? 'script';
+  state.mode = mode;
 
   const base = () => ({
     scriptPath: paths.scriptPath,
@@ -235,7 +242,7 @@ export async function runPipeline(
     const run = await runAgentStage(
       config,
       'generate',
-      options.mode === 'video' ? ['invariants', 'generate', 'generate-video'] : ['invariants', 'generate'],
+      mode === 'video' ? ['invariants', 'generate', 'generate-video'] : ['invariants', 'generate'],
       `${brief}\n\n${where}`,
       generateOutputSchema,
       deps.stageDeps,
@@ -247,7 +254,7 @@ export async function runPipeline(
     if (!deps.fileExists(paths.scriptPath)) return failed(`recording script not written to ${paths.scriptPath}`);
     if (!deps.fileExists(join(paths.ptePath, 'app.json'))) return failed(`PTE app.json not written in ${paths.ptePath}`);
     state.generate = run.output;
-    if (options.mode === 'video') {
+    if (mode === 'video') {
       // Lint problems become gaps, not failures: the script and env are still worth
       // delivering, and makeVideo lints again and reports.
       const itemDir = join(paths.scriptPath, '..');
@@ -339,7 +346,10 @@ export async function runPipeline(
       return failed(`deploy reported success but "${appName}" is not installed on ${state.envId}`);
     }
     const env = await collectEnv(cli, state.envId);
-    if (options.mode !== 'video') return { ...base(), status: 'success', env };
+    if (mode !== 'video') return { ...base(), status: 'success', env };
+    const reused = state.videoAttempted === true;
+    state.videoAttempted = true;
+    save();
     log('  Recording demo video...');
     const video = await deps.makeVideo({
       itemDir: join(paths.scriptPath, '..'),
@@ -349,8 +359,14 @@ export async function runPipeline(
       config,
     });
     if (!video.ok) log(`  Video failed: ${video.error}`);
+    const result = base();
+    if (reused) {
+      result.gaps.push(
+        'video: re-recorded on an environment an earlier recording already used; the demo data may not be in its starting state',
+      );
+    }
     return {
-      ...base(),
+      ...result,
       status: 'success',
       env,
       video: video.ok ? { ok: true, path: video.videoPath } : { ok: false, error: video.error },

@@ -148,7 +148,10 @@ same way here.
 - **Resuming a failed item:** each item's output folder holds `pipeline-state.json` (no
   credentials). Run `docker compose exec create-scripts-for-videos bun src/cli/index.ts test-item
   <id> --resume` to continue from the last good step, e.g. reuse the generated PTE and the
-  provisioned environment after a deploy failure.
+  provisioned environment after a deploy failure. A resumed `create video` item stays a video item
+  (the mode is saved in `pipeline-state.json`); add `--video` to turn a script-only item into a
+  video item. A second recording reuses the same environment, so the comment warns that the demo
+  data may no longer be in its starting state.
 - **Demo videos (`create video` tag):** the image contains Chromium (Playwright, installed at
   `/ms-playwright`) and the recorder runs headless inside the container. Each video item writes
   `recording.yml`, `narration.yml`, `video/` (raw webm, per-step screenshots) and `demo.mp4` in

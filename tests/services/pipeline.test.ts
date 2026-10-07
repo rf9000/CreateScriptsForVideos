@@ -257,6 +257,32 @@ describe('runPipeline', () => {
     expect(result.video).toEqual({ ok: false, error: 'recording failed at step 4: dialog' });
   });
 
+  test('video mode is saved so a resume keeps it', async () => {
+    const { deps, store } = makeDeps();
+    await runPipeline(testConfig(), context, { mode: 'video' }, deps);
+    const saved = [...store.values()].pop()!;
+    expect(saved.mode).toBe('video');
+    expect(saved.videoAttempted).toBe(true);
+  });
+
+  test('resume without a mode uses the saved one; a second recording warns about reused data', async () => {
+    const saved: PipelineState = {
+      mode: 'video',
+      videoAttempted: true,
+      generate: outputs.generate as PipelineState['generate'],
+      validate: outputs.validate as PipelineState['validate'],
+      envId: 'env-1',
+      activated: true,
+      deployGaps: [],
+    };
+    const { deps } = makeDeps({ saved });
+    const result = await runPipeline(testConfig(), context, { resume: true }, deps);
+    expect(deps.makeVideo).toHaveBeenCalledTimes(1);
+    expect(result.gaps).toContain(
+      'video: re-recorded on an environment an earlier recording already used; the demo data may not be in its starting state',
+    );
+  });
+
   test('resume skips the steps already done', async () => {
     const saved: PipelineState = {
       generate: outputs.generate as PipelineState['generate'],
