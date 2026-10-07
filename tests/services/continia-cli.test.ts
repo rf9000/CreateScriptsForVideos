@@ -55,7 +55,7 @@ describe('createContiniaCli', () => {
   test('throws with stderr on a non-zero exit', async () => {
     const exec = execReturning({ exitCode: 2, stderr: 'Error: 401' });
     await expect(createContiniaCli(testConfig(), exec).listApps('e1')).rejects.toThrow(
-      'continia env apps e1 exited 2: Error: 401',
+      'continia env apps e1 --all exited 2: Error: 401',
     );
   });
 
