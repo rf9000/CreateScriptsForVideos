@@ -5,6 +5,8 @@ import { startWatcher, runPollCycle } from '../services/watcher.ts';
 import { getWorkItem } from '../sdk/azure-devops-client.ts';
 import { processItem, defaultProcessorDeps } from '../services/processor.ts';
 import { briefWorkItem, parseBrief } from '../services/brief.ts';
+import { describePage, loadSymbolIndex } from '../video/symbols.ts';
+import { checkRecording, symbolDirsFor } from '../video/recording-check.ts';
 import { existsSync, readFileSync } from 'fs';
 
 const HELP = `
@@ -19,6 +21,10 @@ Commands:
   test-item <id>   Process a single work item (dry-run, no ADO writes)
   test-item --brief <file.md> [--id <n>]
                    Process a local brief instead (# Title, then description); no ADO at all
+  symbols <pte-folder> <page>
+                   List a page's real field/action/repeater names (from the PTE's symbols)
+  recording-check <item-folder> <pte-folder>
+                   Check recording.yml steps and names; write FastTab hints when clean
   help             Show this help message
 
 Options:
@@ -133,6 +139,37 @@ switch (command) {
       `\nDone: ${result.processed ? 'processed' : 'failed'}` +
         `${result.error ? ` (${result.error})` : ''} — $${(result.costUsd ?? 0).toFixed(4)}`,
     );
+    break;
+  }
+
+  case 'symbols': {
+    // For the recording agent: real names of a page, from the PTE's symbol packages.
+    const [ptePath, pageName] = [process.argv[3], process.argv.slice(4).join(' ')];
+    if (!ptePath || !pageName) {
+      console.error('Usage: create-scripts symbols <pte-folder> <page name>');
+      process.exitCode = 1;
+      break;
+    }
+    console.log(describePage(loadSymbolIndex(symbolDirsFor(ptePath)), pageName));
+    break;
+  }
+
+  case 'recording-check': {
+    // For the recording agent: structure + names; writes FastTab hints when clean.
+    const [itemDir, ptePath] = [process.argv[3], process.argv[4]];
+    if (!itemDir || !ptePath) {
+      console.error('Usage: create-scripts recording-check <item-folder> <pte-folder>');
+      process.exitCode = 1;
+      break;
+    }
+    const problems = checkRecording(itemDir, loadSymbolIndex(symbolDirsFor(ptePath)));
+    if (problems.length) {
+      console.log(`recording.yml has ${problems.length} problem(s):`);
+      for (const p of problems) console.log(`- ${p}`);
+      process.exitCode = 1;
+    } else {
+      console.log('recording.yml OK: all steps and names check out; recording.staging.yml written.');
+    }
     break;
   }
 
