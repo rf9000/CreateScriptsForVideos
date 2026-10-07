@@ -72,6 +72,12 @@ describe('createContiniaCli', () => {
     expect(result).toEqual({ installed: false, alreadyPresent: false, reasonCode: 'not-found' });
   });
 
+  test('listApps asks BC for all apps (DemoPortal omits dev-published PTEs)', async () => {
+    const exec = execReturning({ stdout: '[]' });
+    await createContiniaCli(testConfig(), exec).listApps('e1');
+    expect(exec.mock.calls[0]![0]).toEqual(['continia', '--auth-method', 'api-token', 'env', 'apps', 'e1', '--all', '--json']);
+  });
+
   test('accepts wrapped arrays for apps and users', async () => {
     const exec = execReturning(
       { stdout: '{"apps":[{"name":"Continia Demo Data - X","publisher":"P","version":"1.0.0.0"}]}' },

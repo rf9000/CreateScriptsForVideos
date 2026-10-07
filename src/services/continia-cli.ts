@@ -202,7 +202,7 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
     },
 
     async listApps(envId) {
-      const rows = asArray(await run(['env', 'apps', envId]), ['apps', 'items', 'value']);
+      const rows = asArray(await run(['env', 'apps', envId, '--all']), ['apps', 'items', 'value']);
       return rows.map((row) => ({
         name: optionalString(row, ['name', 'displayName']),
         publisher: optionalString(row, ['publisher']),
