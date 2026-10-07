@@ -19,16 +19,12 @@ export const COMPOSE_TIMEOUT_MS = 600_000;
 /** veryfast keeps encode time down at a small size cost; screen recordings compress well. */
 export const ENCODER_ARGS = ['-c:v libx264', '-preset veryfast', '-c:a aac', '-b:a 192k'];
 
-/** Black band below the 1080p picture that holds the subtitles, so they never cover the UI. */
-export const SUBTITLE_BAND_PX = 140;
-
-/** FFmpeg -vf chain: trim the loading screen, then (with subtitles) add the band and burn them in. */
+/** FFmpeg -vf chain: trim the loading screen, then burn in subtitles. */
 export function videoFilters(trimMs: number, subtitlePath: string | undefined): string[] {
   const filters: string[] = [];
   // setpts trim instead of -ss: input seeking on webm is unreliable.
   if (trimMs > 0) filters.push(`trim=start=${(trimMs / 1000).toFixed(3)},setpts=PTS-STARTPTS`);
   if (subtitlePath) {
-    filters.push(`pad=iw:ih+${SUBTITLE_BAND_PX}:0:0:black`);
     const absSubPath = resolve(subtitlePath).replace(/\\/g, '/').replace(/:/g, '\\:');
     filters.push(`ass='${absSubPath}'`);
   }
@@ -58,12 +54,11 @@ export function writeSubtitles(
     'Title: Demo Narration',
     'ScriptType: v4.00+',
     'PlayResX: 1920',
-    `PlayResY: ${1080 + SUBTITLE_BAND_PX}`,
+    'PlayResY: 1080',
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    // Centered in the black band below the picture.
-    'Style: Default,Arial,40,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,60,60,45,1',
+    'Style: Default,Arial,36,&H00FFFFFF,&H000000FF,&H40000000,&H40000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,50,1',
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',

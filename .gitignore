@@ -12,3 +12,7 @@ coverage/
 .claude/.tools/
 *.exe
 output/
+
+# Local tool config (may hold environment credentials)
+.mcp.json
+.vscode/
