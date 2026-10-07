@@ -73,6 +73,12 @@ export async function stageSafely<T>(fn: () => Promise<T>, notes: string[]): Pro
   }
 }
 
+/** start.pageId opens the demo's first page directly (BC's engine does not navigate to start pages). */
+function startPageId(rec: Recording): number | string | undefined {
+  const id = rec.start?.['pageId'];
+  return typeof id === 'number' || typeof id === 'string' ? id : undefined;
+}
+
 /** How long to hold after a step: narration clip + buffer (min 1.5 s), else the default. */
 export function holdFor(index: number, clipMs: Map<number, number>, defaultMs: number): number {
   const clip = clipMs.get(index);
@@ -90,7 +96,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
   try {
     const profile = typeof opts.recording.start?.['profile'] === 'string' ? (opts.recording.start['profile'] as string) : undefined;
     const { context, page, videoStartedAt } = await openSession(browser, {
-      url: opts.url, profile, user: opts.user, password: opts.password, videoDir: opts.outDir,
+      url: opts.url, profile, pageId: startPageId(opts.recording), user: opts.user, password: opts.password, videoDir: opts.outDir,
     });
     const videoStart = videoStartedAt;
     await injectCursor(page);

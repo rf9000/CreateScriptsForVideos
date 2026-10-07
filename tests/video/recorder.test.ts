@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { holdFor, sliceFor, stageSafely } from '../../src/video/recorder.ts';
-import { errorText } from '../../src/video/bc-session.ts';
+import { errorText, startUrl } from '../../src/video/bc-session.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
 const rec: Recording = {
@@ -49,5 +49,14 @@ describe('stageSafely', () => {
     const notes: string[] = [];
     expect(await stageSafely(async () => 42, notes)).toBe(42);
     expect(notes).toEqual([]);
+  });
+});
+
+describe('startUrl', () => {
+  test('adds profile and the start page as a deep link (BC does not navigate to start.page itself)', () => {
+    expect(startUrl('https://bc/env-1', 'BUSINESS MANAGER', 371)).toBe('https://bc/env-1?profile=BUSINESS%20MANAGER&page=371');
+  });
+  test('no page id: Role Center', () => {
+    expect(startUrl('https://bc/env-1/', 'BUSINESS MANAGER')).toBe('https://bc/env-1/?profile=BUSINESS%20MANAGER');
   });
 });

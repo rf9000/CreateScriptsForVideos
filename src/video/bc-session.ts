@@ -92,14 +92,20 @@ export async function dismissStartupDialogs(page: Page): Promise<string[]> {
   return closed;
 }
 
+/** Web client URL with profile and, optionally, the start page as a deep link. */
+export function startUrl(base: string, profile?: string, pageId?: number | string): string {
+  const url = new URL(base);
+  if (profile) url.searchParams.set('profile', profile);
+  if (pageId !== undefined) url.searchParams.set('page', String(pageId));
+  return url.toString().replaceAll('+', '%20');
+}
+
 /** Log in off camera, then open a video-recorded context on the authenticated page. */
 export async function openSession(
   browser: Browser,
-  opts: { url: string; profile?: string; user: string; password: string; videoDir: string },
+  opts: { url: string; profile?: string; pageId?: number | string; user: string; password: string; videoDir: string },
 ): Promise<{ context: BrowserContext; page: Page; videoStartedAt: number }> {
-  const url = new URL(opts.url);
-  if (opts.profile) url.searchParams.set('profile', opts.profile);
-  const start = url.toString().replaceAll('+', '%20');
+  const start = startUrl(opts.url, opts.profile, opts.pageId);
 
   const auth = await browser.newContext({ viewport: VIEWPORT });
   const authPage = await auth.newPage();
