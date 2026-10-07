@@ -1,0 +1,64 @@
+# V1's get-bank-account-information flow (failed in V1: the auto-fill never appeared),
+# rewritten in BC's real recording format. Opens an existing bank account instead of
+# clicking New, because the action-step shape is still unverified. Needs Continia Banking
+# installed and activated; no demo-data app. The repeater control name 'Control1' is
+# assumed (same as Customer List); the validate steps check Banking's IBAN auto-fill.
+name: IBAN autofill
+description: Enter an IBAN on a bank account card and let Continia Banking fill in the bank details
+start:
+  profile: BUSINESS MANAGER
+steps:
+  - type: navigate
+    target:
+      - page: Business Manager Role Center
+      - action: Bank Accounts
+    description: Navigate to <caption>Bank Accounts</caption>
+  - type: page-shown
+    source:
+      page: Bank Account List
+    modal: false
+    runtimeId: ba01
+    description: Page <caption>Bank Accounts</caption> was shown.
+  - type: invoke
+    target:
+      - page: Bank Account List
+        runtimeRef: ba01
+      - repeater: Control1
+    invokeType: Edit
+    description: Invoke row on <caption>Control1</caption>
+  - type: page-shown
+    source:
+      page: Bank Account Card
+    modal: false
+    runtimeId: ba02
+    description: Page <caption>Bank Account Card</caption> was shown.
+  - type: input
+    target:
+      - page: Bank Account Card
+        runtimeRef: ba02
+      - field: Currency Code
+    value: EUR
+    description: Input <value>EUR</value> into <caption>Currency Code</caption>
+  - type: input
+    target:
+      - page: Bank Account Card
+        runtimeRef: ba02
+      - field: IBAN
+    value: NL85RABO0347427693
+    description: Input <value>NL85RABO0347427693</value> into <caption>IBAN</caption>
+  - type: validate
+    target:
+      - page: Bank Account Card
+        runtimeRef: ba02
+      - field: IBAN
+    operation: =
+    value: NL85 RABO 0347 4276 93
+    description: Validate <caption>IBAN</caption> <operation>is</operation> <value>NL85 RABO 0347 4276 93</value>
+  - type: validate
+    target:
+      - page: Bank Account Card
+        runtimeRef: ba02
+      - field: SWIFT Code
+    operation: =
+    value: RABONL2U
+    description: Validate <caption>SWIFT Code</caption> <operation>is</operation> <value>RABONL2U</value>

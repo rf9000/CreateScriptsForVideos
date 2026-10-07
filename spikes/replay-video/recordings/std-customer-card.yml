@@ -1,0 +1,87 @@
+# Standard-BC scenario, no demo-data app needed (CRONUS customer 10000).
+# Step shapes copied from a real BC recording published by Companial
+# (companial.com/blog/parameterizing-page-scripting-tool-scripts-in-microsoft-dynamics-business-central):
+# navigate / page-shown / filter / input / invoke / validate, AL object page names,
+# runtimeId/runtimeRef linking. The last two steps (action invoke) are a GUESSED shape,
+# kept separate so a failure there tells us about the action format only.
+name: Std Customer Card
+description: Open customer 10000 from the Role Center, change its phone number and check it
+start:
+  profile: BUSINESS MANAGER
+steps:
+  - type: navigate
+    target:
+      - page: Business Manager Role Center
+      - action: Customers
+    description: Navigate to <caption>Customers</caption>
+  - type: page-shown
+    source:
+      page: Customer List
+    modal: false
+    runtimeId: b4r3
+    description: Page <caption>Customers</caption> was shown.
+  - type: filter
+    target:
+      - page: Customer List
+        runtimeRef: b4r3
+    operation: add
+    column:
+      field: No.
+      scope: filter
+    description: Add filter for <caption>No.</caption> on <caption>Customers</caption>
+  - type: input
+    target:
+      - page: Customer List
+        runtimeRef: b4r3
+      - scope: filter
+        field: No.
+    value: "10000"
+    description: Input <value>10000</value> into <caption>No.</caption>
+  - type: invoke
+    target:
+      - page: Customer List
+        runtimeRef: b4r3
+      - repeater: Control1
+    invokeType: Edit
+    description: Invoke row on <caption>Control1</caption>
+  - type: page-shown
+    source:
+      page: Customer Card
+    modal: false
+    runtimeId: b5d1
+    description: Page <caption>Customer Card</caption> was shown.
+  - type: validate
+    target:
+      - page: Customer Card
+        runtimeRef: b5d1
+      - field: No.
+    operation: =
+    value: "10000"
+    description: Validate <caption>No.</caption> <operation>is</operation> <value>10000</value>
+  - type: input
+    target:
+      - page: Customer Card
+        runtimeRef: b5d1
+      - field: Phone No.
+    value: "+45 70 20 30 40"
+    description: Input <value>+45 70 20 30 40</value> into <caption>Phone No.</caption>
+  - type: validate
+    target:
+      - page: Customer Card
+        runtimeRef: b5d1
+      - field: Phone No.
+    operation: =
+    value: "+45 70 20 30 40"
+    description: Validate <caption>Phone No.</caption> <operation>is</operation> <value>+45 70 20 30 40</value>
+  - type: invoke
+    target:
+      - page: Customer Card
+        runtimeRef: b5d1
+      - action: Statistics
+    description: Invoke <caption>Statistics</caption>
+  - type: page-shown
+    source:
+      page: Customer Statistics
+    modal: false
+    runtimeId: b6s1
+    description: Page <caption>Customer Statistics</caption> was shown.

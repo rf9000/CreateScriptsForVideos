@@ -101,7 +101,24 @@ Environment: created from the BASE 29.0 profile, then installed from the DemoPor
    The demo data probably comes from the welcome wizard ("Choose Next for a list of available demo
    and test resources"). For V2 this is the PTE's job; for the spike, run the wizard once.
 
-Next: run the welcome wizard to create demo data, record the flow with Page Scripting (setup step 4),
+6. **V1's step format was wrong at the root.** Real BC recordings (shape copied from a published
+   example) use `navigate`, `page-shown`, `filter`, `input`, `invoke` (`invokeType: Edit` on a
+   `repeater`), `validate`, with `target: [{page, runtimeRef}, {field|action|repeater}]` and
+   `runtimeId` on `page-shown`. With that format the engine does real work:
+   `recordings/std-customer-card.yml` (standard BC, no demo data) navigated, filtered, opened the
+   row and passed both `validate` steps, including a card field changed by `input`.
+   Only my guessed action shape (`invoke` + `{action: Statistics}`) did nothing.
+7. **Per-step replay keeps state.** `recordings/iban-autofill.yml` in `per-step` mode: navigate →
+   list → open row → inputs all worked as separate calls, with no jump back to the start page.
+8. **Continia Banking is active after the activation app.** Entering an IBAN triggered Banking's
+   lookup, which asked "The bank account information has already been filled in. Do you want to
+   update it?". The script had no step for that dialog, so the step waited 44 s and the change was
+   rolled back. Dialog and action step shapes are the remaining unknowns; one real recording of the
+   IBAN flow (New → IBAN → confirm) answers both.
+9. The cursor overlay only found 1 of 8 targets: it looks elements up by caption, but real steps name
+   fields and repeaters by control name. It needs the same names BC uses.
+
+Next (superseded): run the welcome wizard to create demo data, record the flow with Page Scripting (setup step 4),
 then run A, B and C again.
 
 ## Results
