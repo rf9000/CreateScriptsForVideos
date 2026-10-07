@@ -11,27 +11,27 @@ start:
 steps:
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   row: 1
   description: Select the first communication setup record to see current state
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: All Direct
   description: Click All Direct to switch all records to direct transfer
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: Rabobank ISO20022
   description: Select Rabobank ISO20022 from the bank system selection menu
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: OK
   description: Confirm the bank system selection
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   row: 1
   description: Records are now set to Direct transfer - observe the updated values
 - type: scope
@@ -39,12 +39,12 @@ steps:
   steps:
   - type: action
     target:
-    - page: Bank Account Communication Setup
+    - page: CTS-CB Bank Acc. Com. Setup
     row: 2
     description: Select the Account Statement record
   - type: input
     target:
-    - page: Bank Account Communication Setup
+    - page: CTS-CB Bank Acc. Com. Setup
     - field: Enabled
     value: 'false'
     description: Toggle Enabled to false for Account Statement
@@ -53,47 +53,47 @@ steps:
   steps:
   - type: action
     target:
-    - page: Bank Account Communication Setup
+    - page: CTS-CB Bank Acc. Com. Setup
     row: 3
     description: Select the Status record
   - type: input
     target:
-    - page: Bank Account Communication Setup
+    - page: CTS-CB Bank Acc. Com. Setup
     - field: Enabled
     value: 'false'
     description: Toggle Enabled to false for Status
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   row: 1
   description: Review the customized state - Payment is enabled, Account Statement and Status are disabled
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: Set Default Communication
   description: Click Set Default Communication to reset all records to their default values
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: Rabobank ISO20022
   description: Select Rabobank ISO20022 as the bank system to reset
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: OK
   description: Confirm the bank system selection
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: Direct
   description: Select Direct as the target communication type
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   caption: OK
   description: Confirm the communication type selection
 - type: action
   target:
-  - page: Bank Account Communication Setup
+  - page: CTS-CB Bank Acc. Com. Setup
   row: 1
   description: Records have been reset to their default Direct transfer settings

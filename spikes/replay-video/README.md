@@ -79,6 +79,31 @@ Notes:
 | Video | a human watching `per-step` can follow the demo; no visible failures or retries |
 | C | informative only: which LLM-authored step shapes BC accepts or rejects, and why |
 
+## Findings so far (2026-10-07, env `b291025e…`, BASE BC 29.0)
+
+Environment: created from the BASE 29.0 profile, then installed from the DemoPortal catalog with
+`deps install-by-id`: Core Internal Activation App, Continia Banking, Banking Import/Export,
+**Continia Banking Demo (`efd0481e-a034-4dff-ab15-8ced9df75745`, in the catalog)**.
+
+1. **First login shows a "Welcome to your Continia Demo Environment" wizard** (from Banking Demo)
+   over the Role Center. Any recorder, and the V2 pipeline, must close it before the demo starts.
+   The harness now closes it off camera.
+2. **`start.page` does not navigate.** BC's engine starts wherever the client is. V1's `?page=<id>`
+   deep link works (`--page 71553605`); a generated script needs the page ID (or navigation steps).
+3. **`target.page` must be the AL object name** (`CTS-CB Bank Acc. Com. Setup`), not the caption
+   (`Bank Account Communication Setup`). The engine checks it: `Unexpected page. Was expecting
+   'Bank Account Communication Setup' but got page with name 'CTS-CB Bank Acc. Com. Setup'`.
+4. **The engine's "replayed" count is not proof.** V1-shaped action steps (`caption` only) and
+   `row` on an empty grid "replayed" in 0–2 ms with no error and no visible effect; only the input
+   step failed (`Field 'Enabled' was not found`). The video recorder needs its own check after each
+   step (expected page and state). A real recording will show whether this is just V1's step shape.
+5. **Installing Banking Demo creates no data.** Page 71553605 is empty in CRONUS International Ltd.
+   The demo data probably comes from the welcome wizard ("Choose Next for a list of available demo
+   and test resources"). For V2 this is the PTE's job; for the spike, run the wizard once.
+
+Next: run the welcome wizard to create demo data, record the flow with Page Scripting (setup step 4),
+then run A, B and C again.
+
 ## Results
 
 Fill in after running:

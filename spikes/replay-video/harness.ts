@@ -9,7 +9,7 @@
  *                     would pace steps to narration)
  *
  * Usage: node harness.ts --env <envId> --recording recordings/x.yml --mode per-step [--headed]
- *        [--hold-ms 1500] [--keep-start] [--no-cursor] [--continue] [--out dir]
+ *        [--hold-ms 1500] [--keep-start] [--no-cursor] [--continue] [--page <pageId>] [--out dir]
  * Env:   CONTINIA_API_TOKEN (from the repo .env) for --env; or BC_URL, BC_USER, BC_PASS instead
  */
 import { chromium } from 'playwright';
@@ -120,7 +120,32 @@ function startAddress(): string {
   const url = new URL(bcUrl!);
   const profile = recording.start?.['profile'];
   if (typeof profile === 'string') url.searchParams.set('profile', profile);
+  // Deep link to the start page (V1 did the same): BC's engine doesn't navigate to
+  // start.page itself; it expects to begin where the recording was made.
+  const pageId = opt('page') ?? recording.start?.['pageId'];
+  if (pageId !== undefined) url.searchParams.set('page', String(pageId));
   return url.toString().replaceAll('+', '%20');
+}
+
+/** First-run dialogs that cover the page on a fresh environment, closed before the demo starts. */
+const STARTUP_DIALOGS = ['Welcome to your Continia Demo Environment'];
+
+async function dismissStartupDialogs(page: Page): Promise<string[]> {
+  const closed: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const frame = await awaitFrame(page);
+    let hit = false;
+    for (const title of STARTUP_DIALOGS) {
+      const dialog = frame.locator('[role=dialog]:visible', { hasText: title }).last();
+      if ((await dialog.count()) === 0) continue;
+      await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+      closed.push(title);
+      hit = true;
+    }
+    if (!hit) break;
+    await page.waitForTimeout(500);
+  }
+  return closed;
 }
 
 /** Wait until BC is idle in the main page and its iframe; return the BC frame. */
@@ -276,6 +301,8 @@ try {
     ]);
   }
   await awaitFrame(authPage);
+  const closedAtLogin = await dismissStartupDialogs(authPage);
+  if (closedAtLogin.length) log(`Closed at login: ${closedAtLogin.join(', ')}`);
   const cookies = await auth.cookies();
   const landed = authPage.url();
   await auth.close();
@@ -289,6 +316,9 @@ try {
   const page = await context.newPage();
   await page.goto(landed);
   await awaitFrame(page);
+  const closed = await dismissStartupDialogs(page);
+  if (closed.length) log(`Closed before recording: ${closed.join(', ')}`);
+  summary['startupDialogsClosed'] = [...closedAtLogin, ...closed];
   if (useCursor && mode === 'per-step') await injectCursor(page);
   await page.waitForTimeout(500);
   const started = Date.now();
