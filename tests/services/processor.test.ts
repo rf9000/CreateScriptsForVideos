@@ -331,3 +331,42 @@ describe('isBotComment', () => {
     expect(isBotComment('Please use DK localization')).toBe(false);
   });
 });
+
+describe('processItem — failures around the pipeline', () => {
+  test('keeps the tag and posts nothing when the pipeline never started', async () => {
+    const deps = makeDeps({
+      fetchComments: mock(async () => {
+        throw new Error('ADO 503');
+      }),
+    });
+    const result = await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(result.processed).toBe(false);
+    expect(result.error).toContain('ADO 503');
+    expect(deps.runPipeline).not.toHaveBeenCalled();
+    expect(deps.addComment).not.toHaveBeenCalled();
+    expect(deps.removeTag).not.toHaveBeenCalled();
+  });
+
+  test('reports the env when the attachment upload fails after a successful run', async () => {
+    const deps = makeDeps({
+      uploadAttachment: mock(async () => {
+        throw new Error('upload 500');
+      }),
+    });
+    const result = await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(result.processed).toBe(false);
+    expect(result.costUsd).toBe(0.5);
+    const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
+    expect(html).toContain('upload 500');
+    expect(html).toContain('https://env.example.com');
+    expect(html).toContain('p@ssw0rd');
+    expect(deps.removeTag).toHaveBeenCalled();
+  });
+
+  test('passes pipeline options through', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps, { resume: true });
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(call[2]).toEqual({ resume: true });
+  });
+});

@@ -144,17 +144,22 @@ const DISCOVERY_FIELDS = [
  * `[System.Tags] CONTAINS` is substring-based, so the WIQL only narrows to
  * candidates; we exact-match per tag in code from the fetched System.Tags.
  */
+/** Quote a value for a WIQL string literal (single quotes are doubled). */
+export function wiqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 export async function queryTaggedWorkItems(
   config: AppConfig,
 ): Promise<WorkItemResponse[]> {
   let wiql =
     `SELECT [System.Id] FROM workitems ` +
-    `WHERE [System.Tags] CONTAINS '${config.createScriptTag}'`;
+    `WHERE [System.Tags] CONTAINS ${wiqlString(config.createScriptTag)}`;
   // Area path is how work items are classified under a product (e.g.
   // "Continia Software\Continia Banking") — UNDER matches the node and all
   // descendants. This is the real scope signal; Git artifact links are absent.
   if (config.areaPath) {
-    wiql += ` AND [System.AreaPath] UNDER '${config.areaPath}'`;
+    wiql += ` AND [System.AreaPath] UNDER ${wiqlString(config.areaPath)}`;
   }
   const candidateIds = await queryWorkItems(config, wiql);
   if (candidateIds.length === 0) return [];

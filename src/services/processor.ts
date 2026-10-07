@@ -143,6 +143,12 @@ export async function processItem(
   const title = String(item.fields['System.Title'] ?? '(untitled)');
   log(`Processing item #${item.id}: ${title}`);
 
+  // Set once the pipeline starts. Before that nothing was spent and nothing was
+  // provisioned, so a failure (e.g. a transient comment fetch error) keeps the
+  // tag and the item is retried on the next cycle.
+  let attempted = false;
+  let result: ScriptResult | undefined;
+
   try {
     const rawComments = await deps.fetchComments(config, item.id);
     // ADO stores comments as HTML and includes this pipeline's own past posts
@@ -161,7 +167,8 @@ export async function processItem(
     };
 
     log(`  Item #${item.id}: Running pipeline...`);
-    const result = await deps.runPipeline(config, context, options);
+    attempted = true;
+    result = await deps.runPipeline(config, context, options);
     const costUsd = result.costUsd;
     log(`  Item #${item.id}: Agent cost $${(costUsd ?? 0).toFixed(4)}`);
 
@@ -197,25 +204,35 @@ export async function processItem(
     return { itemId: item.id, processed: true, costUsd };
   } catch (err) {
     log(`  Item #${item.id}: Error — ${err}`);
+    if (!attempted) {
+      log(`  Item #${item.id}: Pipeline not started; keeping the tag to retry next cycle`);
+      return { itemId: item.id, processed: false, error: String(err) };
+    }
     // Best-effort failure comment so a removed tag always has an explanation.
+    // Carries the env when the pipeline provisioned one (e.g. the attachment
+    // upload failed after a successful run) so its credentials aren't lost.
     if (!config.dryRun) {
       try {
         await deps.addComment(
           config,
           item.id,
-          buildFailureComment({ status: 'failed', errorMessage: String(err) }),
+          buildFailureComment({
+            status: 'failed',
+            errorMessage: String(err),
+            ...(result?.env ? { env: result.env } : {}),
+          }),
         );
       } catch {
         // ignore — the finally still removes the tag
       }
     }
-    return { itemId: item.id, processed: false, error: String(err) };
+    return { itemId: item.id, processed: false, error: String(err), costUsd: result?.costUsd };
   } finally {
     // The tag is the work queue: drop it after every real attempt (success or
     // failure) so the item isn't rediscovered. Re-tagging is how you request it
     // again. Skipped in dry-run (no writes). Best-effort — a failed removal just
     // means the item may be retried on the next cycle.
-    if (!config.dryRun) {
+    if (attempted && !config.dryRun) {
       try {
         await deps.removeTag(config, item.id, config.createScriptTag);
       } catch (err) {

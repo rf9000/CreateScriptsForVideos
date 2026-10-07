@@ -14,6 +14,9 @@ Compile the PTE and publish it there.
 4. The PTE's install trigger runs `VerifyDemoData()`. A "Demo data verification failed" error means
    the seeding code is wrong: fix the data creation and redeploy, the same as a compile error.
 
+The CLI finds apps relative to the current directory and rejects some absolute app paths, so run
+`deps` and `deploy` from the PTE folder's parent with the folder name as the app path.
+
 Don't create, start, stop, or delete environments; the pipeline owns the environment lifecycle and
 checks the installed apps after you finish.
 

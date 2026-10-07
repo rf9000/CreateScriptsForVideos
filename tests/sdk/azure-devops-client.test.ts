@@ -401,6 +401,14 @@ describe('queryTaggedWorkItems', () => {
     );
   });
 
+  test('escapes single quotes in WIQL values', async () => {
+    setSequentialMockFetch({ body: { workItems: [] } });
+    await queryTaggedWorkItems({ ...mockConfig(), createScriptTag: "it's", areaPath: "O'Brien" });
+    const body = JSON.parse((mockFn.mock.calls[0]![1] as RequestInit).body as string) as { query: string };
+    expect(body.query).toContain("CONTAINS 'it''s'");
+    expect(body.query).toContain("UNDER 'O''Brien'");
+  });
+
   test('omits the AreaPath clause when areaPath is empty', async () => {
     setSequentialMockFetch(
       { body: { workItems: [{ id: 7, url: 'u7' }] } },
