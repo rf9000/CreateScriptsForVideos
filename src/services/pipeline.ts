@@ -31,7 +31,10 @@ export interface WorkItemContext {
   itemTitle: string;
   itemType: string;
   itemDescription: string;
+  /** Human comments posted before the pipeline's last post on the item. */
   comments: string[];
+  /** Human comments posted after the pipeline's last post: corrections to the previous run, oldest first. */
+  feedback?: string[];
 }
 
 export const generateOutputSchema = z.object({
@@ -157,7 +160,29 @@ export function buildBrief(context: WorkItemContext): string {
       lines.push('', `### Comment ${i + 1}`, comment);
     });
   }
+  const feedback = context.feedback ?? [];
+  if (feedback.length > 0) {
+    lines.push(
+      '',
+      '## Feedback on the previous run',
+      'A reviewer saw the previous output and asked for these changes. They take priority over the',
+      'description and the comments above. Where two of them disagree, the later one wins.',
+    );
+    feedback.forEach((text, i) => {
+      lines.push('', `### Feedback ${i + 1}`, text);
+    });
+  }
   return lines.join('\n');
+}
+
+/** Points the generate stage at the output a previous run left in the item folder. */
+function previousRunBlock(paths: ItemPaths): string {
+  return [
+    '## Previous version',
+    `A previous run left a recording script at ${paths.scriptPath} and a PTE in ${paths.ptePath}.`,
+    'Revise them in place instead of starting over: apply the feedback, and keep what the feedback',
+    'does not ask to change.',
+  ].join('\n');
 }
 
 function pathsBlock(config: AppConfig, paths: ItemPaths): string {
@@ -191,6 +216,10 @@ export async function runPipeline(
   const stages: StageUsage[] = [];
   const cli = deps.cli(config);
 
+  // A fresh run on an item that already has output is a re-run after a retag.
+  // Checked before generate overwrites the files.
+  const previous =
+    !options.resume && deps.fileExists(paths.scriptPath) && deps.fileExists(join(paths.ptePath, 'app.json'));
   if (!options.resume) deps.clearState(paths.statePath);
   const state: PipelineState = (options.resume && deps.loadState(paths.statePath)) || {};
   const save = () => deps.saveState(paths.statePath, state);
@@ -255,7 +284,8 @@ export async function runPipeline(
       config,
       'generate',
       ['invariants', 'generate'],
-      `${brief}\n\n${where}`,
+      // Only generate sees the earlier output as a previous version; by validate it is this run's.
+      previous ? `${brief}\n\n${where}\n\n${previousRunBlock(paths)}` : `${brief}\n\n${where}`,
       generateOutputSchema,
       deps.stageDeps,
     );

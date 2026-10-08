@@ -82,7 +82,28 @@ export function isBotComment(text: string): boolean {
   );
 }
 
-const botFooter = `<p><em>Posted automatically by the create-scripts pipeline</em> <code>${BOT_COMMENT_MARKER}</code></p>`;
+/**
+ * Split a work item's comments (oldest first) for the brief. Human comments
+ * after the pipeline's last post are feedback on that run; the rest is context.
+ * ADO stores comments as HTML and includes this pipeline's own posts (env
+ * credentials, failure reports). Neither belongs in the agent's brief.
+ */
+export function splitComments(raw: string[]): { comments: string[]; feedback: string[] } {
+  let lastBot = -1;
+  raw.forEach((c, i) => {
+    if (isBotComment(c)) lastBot = i;
+  });
+  const human = (list: string[]) =>
+    list
+      .filter((c) => !isBotComment(c))
+      .map((c) => htmlToText(c))
+      .filter((c) => c.length > 0);
+  // No earlier post means no earlier run: everything is context.
+  if (lastBot < 0) return { comments: human(raw), feedback: [] };
+  return { comments: human(raw.slice(0, lastBot)), feedback: human(raw.slice(lastBot + 1)) };
+}
+
+const botFooter =`<p><em>Posted automatically by the create-scripts pipeline</em> <code>${BOT_COMMENT_MARKER}</code></p>`;
 
 // ADO work-item comments render HTML, not Markdown — build HTML directly.
 /** ADO's default work-item attachment size limit. */
@@ -113,7 +134,10 @@ function buildEnvComment(result: ScriptResult, fileName: string, videoNote = '')
   }
   lines.push(`<p>The recording script is attached to this work item as <code>${escapeHtml(fileName)}</code>.</p>`);
   if (videoNote) lines.push(videoNote);
-  lines.push(botFooter);
+  lines.push(
+    '<p><strong>Not what you expected?</strong> Add a comment that says what to change (the flow to show, the demo data you want), then re-add the tag. The next run revises this version and treats your comment as the top priority.</p>',
+    botFooter,
+  );
   return lines.join('\n');
 }
 
@@ -134,7 +158,7 @@ function buildFailureComment(result: ScriptResult): string {
     );
   }
   lines.push(
-    '<p>The tag has been removed. <strong>Re-add the tag</strong> (e.g. after adding more detail) to try again.</p>',
+    '<p>The tag has been removed. To try again, add a comment with more detail if needed, then <strong>re-add the tag</strong>. The next run treats comments posted after this one as the top priority.</p>',
     botFooter,
   );
   return lines.join('\n');
@@ -157,13 +181,7 @@ export async function processItem(
   let result: ScriptResult | undefined;
 
   try {
-    const rawComments = await deps.fetchComments(config, item.id);
-    // ADO stores comments as HTML and includes this pipeline's own past posts
-    // (env credentials, failure reports). Neither belongs in the agent's brief.
-    const comments = rawComments
-      .filter((c) => !isBotComment(c))
-      .map((c) => htmlToText(c))
-      .filter((c) => c.length > 0);
+    const { comments, feedback } = splitComments(await deps.fetchComments(config, item.id));
 
     const context: WorkItemContext = {
       itemId: item.id,
@@ -171,6 +189,7 @@ export async function processItem(
       itemType: String(item.fields['System.WorkItemType'] ?? ''),
       itemDescription: htmlToText(String(item.fields['System.Description'] ?? '')),
       comments,
+      ...(feedback.length > 0 ? { feedback } : {}),
     };
 
     log(`  Item #${item.id}: Running pipeline...`);

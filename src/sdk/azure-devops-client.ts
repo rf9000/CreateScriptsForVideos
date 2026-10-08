@@ -203,7 +203,8 @@ export async function getWorkItemComments(
   config: AppConfig,
   workItemId: number,
 ): Promise<string[]> {
-  const path = `wit/workItems/${workItemId}/comments?api-version=7.1-preview.4`;
+  // The API defaults to newest first; the feedback split needs creation order.
+  const path = `wit/workItems/${workItemId}/comments?order=asc&api-version=7.1-preview.4`;
   const data = await adoFetchWithRetry<CommentsResponse>(config, path);
   return data.comments.map((c) => c.text);
 }

@@ -265,6 +265,41 @@ describe('processItem — brief hygiene', () => {
     expect(context.comments).toEqual(['Use DK localization']);
   });
 
+  test('human comments after the last bot post become feedback; earlier ones stay context', async () => {
+    const deps = makeDeps({
+      fetchComments: mock(async () => [
+        '<p>Use DK localization</p>',
+        `<p>Recording environment ready for X</p><code>${BOT_COMMENT_MARKER}</code>`,
+        '<p>Too short, show the merge step</p>',
+        `<p>Recording environment ready for X</p><code>${BOT_COMMENT_MARKER}</code>`,
+        '<p>Seed <b>3</b> bank accounts</p>',
+        '<p>And use EUR</p>',
+      ]),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
+    const context = call[1] as { comments: string[]; feedback?: string[] };
+    expect(context.comments).toEqual(['Use DK localization', 'Too short, show the merge step']);
+    expect(context.feedback).toEqual(['Seed 3 bank accounts', 'And use EUR']);
+  });
+
+  test('without an earlier bot post every comment is context, not feedback', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
+    const context = call[1] as { comments: string[]; feedback?: string[] };
+    expect(context.comments).toEqual(['Use DK localization']);
+    expect(context.feedback).toBeUndefined();
+  });
+
+  test('success comment tells the user how to ask for changes', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const commentCall = (deps.addComment as ReturnType<typeof mock>).mock.calls[0]!;
+    expect(String(commentCall[2])).toContain('re-add the tag');
+  });
+
   test('strips HTML from the description', async () => {
     const deps = makeDeps();
     const item = mockWorkItem({

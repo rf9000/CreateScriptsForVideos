@@ -94,6 +94,40 @@ describe('buildBrief', () => {
     const brief = buildBrief({ ...context, itemDescription: '', comments: [] });
     expect(brief).not.toContain('## Description');
     expect(brief).not.toContain('## Comments');
+    expect(brief).not.toContain('## Feedback');
+  });
+
+  test('puts feedback last, in order, marked as the priority', () => {
+    const brief = buildBrief({ ...context, feedback: ['Use 3 bank accounts', 'Actually use 2'] });
+    const at = brief.indexOf('## Feedback on the previous run');
+    expect(at).toBeGreaterThan(brief.indexOf('## Comments'));
+    expect(brief).toContain('take priority');
+    expect(brief.indexOf('Use 3 bank accounts')).toBeLessThan(brief.indexOf('Actually use 2'));
+    expect(brief.indexOf('Use 3 bank accounts')).toBeGreaterThan(at);
+  });
+});
+
+describe('runPipeline — re-run after a retag', () => {
+  test('points generate, and only generate, at the previous output', async () => {
+    const { deps, query } = makeDeps();
+    await runPipeline(testConfig(), context, {}, deps);
+    const prompts = query.mock.calls.map((c) => String(c[0].prompt));
+    expect(prompts[0]).toContain('## Previous version');
+    expect(prompts[1]).not.toContain('## Previous version');
+  });
+
+  test('no previous-version note on a first run', async () => {
+    const { deps, query } = makeDeps();
+    // Nothing on disk until generate has run.
+    deps.fileExists.mockImplementation(() => query.mock.calls.length > 0);
+    await runPipeline(testConfig(), context, {}, deps);
+    expect(String(query.mock.calls[0]![0].prompt)).not.toContain('## Previous version');
+  });
+
+  test('no previous-version note on resume', async () => {
+    const { deps, query } = makeDeps({ saved: {} });
+    await runPipeline(testConfig(), context, { resume: true }, deps);
+    expect(String(query.mock.calls[0]![0].prompt)).not.toContain('## Previous version');
   });
 });
 

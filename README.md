@@ -17,7 +17,7 @@ Watches Azure DevOps for work items tagged `create script` and turns each one in
    | Verify | Code (`continia env apps`, `env users`) | PTE confirmed installed, credentials collected |
 
 3. The script is attached to the work item, and a comment carries the environment URL and credentials. On failure, the comment explains why and lists any environment that is still running.
-4. The tag is removed after each attempt. Re-adding it requests a new run.
+4. The tag is removed after each attempt. Re-adding it requests a new run. To correct a result, comment what to change (the flow to show, the demo data wanted) and then re-add the tag. Comments posted after the pipeline's last post go to the agents as feedback that overrides the description, and the generate stage revises the previous script and PTE instead of starting over.
 
 Items tagged `create video` run the same steps, then record the demo in the environment with BC's own replay engine, narrate it and attach `demo-video-<id>.mp4` (a draft for review). After deploy, a recording stage turns the script into a BC Page Scripting recording (`recording.yml`) and narration, using the PTE's symbol packages for exact page, field and action names (`symbols` / `recording-check` CLI tools). The code checks it again before recording; see `src/video/` and `prompts/recording.md`.
 

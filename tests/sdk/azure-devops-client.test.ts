@@ -570,6 +570,7 @@ describe('getWorkItemComments', () => {
     expect(result).toEqual(['first comment', 'second comment']);
     const url = mockFn.mock.calls[0]![0] as string;
     expect(url).toContain('wit/workItems/100/comments');
+    expect(url).toContain('order=asc');
   });
 
   test('returns empty array when there are no comments', async () => {
