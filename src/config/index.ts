@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { z } from "zod";
 import type { AppConfig, StageConfig, StageName } from "../types/index.ts";
 
@@ -28,6 +29,8 @@ const envSchema = z.object({
   LSP_PLUGIN_PATH: z.string().default(""),
   POLL_INTERVAL_MINUTES: z.coerce.number().positive().default(5),
   OUTPUT_RETENTION_DAYS: z.coerce.number().int().min(0).default(14),
+  STATE_DIR: z.string().default(".state"),
+  COST_LOG_PATH: z.string().optional(),
   WATCH_CONCURRENCY: z.coerce.number().int().min(1).default(1),
   CLAUDE_MODEL: z.string().default("claude-sonnet-4-6"),
   CLAUDE_EFFORT: effortSchema.optional(),
@@ -129,6 +132,7 @@ export function loadConfig(
     pteOutputDir: parsed.PTE_OUTPUT_DIR ?? workspaceOutputDir,
     lspPluginPath: parsed.LSP_PLUGIN_PATH,
     outputRetentionDays: parsed.OUTPUT_RETENTION_DAYS,
+    costLogPath: parsed.COST_LOG_PATH ?? join(parsed.STATE_DIR, "cost-ledger.jsonl"),
     watchConcurrency: parsed.WATCH_CONCURRENCY,
     stages: {
       generate: stage("generate"),

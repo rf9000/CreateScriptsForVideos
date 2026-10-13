@@ -40,6 +40,7 @@ function mockConfig(): AppConfig {
     pteOutputDir: './output',
     lspPluginPath: '',
     outputRetentionDays: 14,
+    costLogPath: '.state/cost-ledger.jsonl',
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',

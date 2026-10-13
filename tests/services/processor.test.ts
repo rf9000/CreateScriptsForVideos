@@ -24,6 +24,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     pteOutputDir: './output',
     lspPluginPath: '',
     outputRetentionDays: 14,
+    costLogPath: '.state/cost-ledger.jsonl',
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',
@@ -80,6 +81,7 @@ function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
     report: mock(() => {}),
     readVideo: mock(() => new Uint8Array([1, 2])),
     fileSize: mock(() => 1000),
+    recordRun: mock(() => {}),
     ...overrides,
   };
 }
@@ -491,5 +493,63 @@ describe('processItem — review fixes', () => {
     expect(html).toContain('Recording environment ready');
     expect(html).toContain('could not be attached');
     expect(html).toContain('413 Request Entity Too Large');
+  });
+});
+
+describe('processItem — run ledger', () => {
+  const recorded = (deps: ProcessorDeps) =>
+    (deps.recordRun as ReturnType<typeof mock>).mock.calls.map((c) => c[1] as Record<string, unknown>);
+
+  test('records a completed run with its cost, mode and title', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const [run] = recorded(deps);
+    expect(run).toMatchObject({ workItemId: 42, title: 'Demo merge rules', outcome: 'completed', mode: 'script', runCostUsd: 0.5 });
+    expect(run!.error).toBeUndefined();
+  });
+
+  test('records a failed run with a one-line reason and the full error', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async (): Promise<ScriptResult> => ({
+        status: 'failed', errorMessage: 'deploy failed\nAL0132: line 1\nAL0118: line 2', costUsd: 1.25,
+      })),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    const [run] = recorded(deps);
+    expect(run).toMatchObject({ outcome: 'failed', runCostUsd: 1.25, reason: 'deploy failed' });
+    expect(run!.error).toBe('deploy failed\nAL0132: line 1\nAL0118: line 2');
+  });
+
+  test('records a failure after the run, e.g. a failed upload', async () => {
+    const deps = makeDeps({ uploadAttachment: mock(async () => { throw new Error('upload 500'); }) });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(recorded(deps)[0]).toMatchObject({ outcome: 'failed', runCostUsd: 0.5 });
+    expect(String(recorded(deps)[0]!.error)).toContain('upload 500');
+  });
+
+  test('records nothing when the pipeline never started', async () => {
+    const deps = makeDeps({ fetchComments: mock(async () => { throw new Error('ADO 503'); }) });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(deps.recordRun).not.toHaveBeenCalled();
+  });
+
+  test('records nothing on a dry run', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig({ dryRun: true }), mockWorkItem(), deps);
+    expect(deps.recordRun).not.toHaveBeenCalled();
+  });
+
+  test('a failed ledger write does not change the outcome', async () => {
+    const deps = makeDeps({ recordRun: mock(() => { throw new Error('disk full'); }) });
+    const result = await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(result.processed).toBe(true);
+  });
+
+  test('a completed video item without its video gives the reason', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async (): Promise<ScriptResult> => ({ ...successResult, video: { ok: false, error: 'replay timed out' } })),
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps, { mode: 'video' });
+    expect(recorded(deps)[0]).toMatchObject({ outcome: 'completed', mode: 'video', reason: 'video not attached: replay timed out' });
   });
 });

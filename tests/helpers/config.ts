@@ -26,6 +26,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     pteOutputDir: '/work/pte',
     lspPluginPath: '',
     outputRetentionDays: 14,
+    costLogPath: '.state/cost-ledger.jsonl',
     watchConcurrency: 1,
     stages: {
       generate: { model: 'gen-model', maxTurns: 150, timeoutMinutes: 60 },

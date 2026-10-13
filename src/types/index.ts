@@ -40,6 +40,8 @@ export interface AppConfig {
   lspPluginPath: string;
   /** Days to keep generated output/<id>/ folders before the watcher prunes them. 0 = never prune. */
   outputRetentionDays: number;
+  /** Run ledger (JSONL): one line per finished run, read by the dashboard for its history. */
+  costLogPath: string;
   /** Max work items processed in parallel per poll cycle. 1 = sequential (default). */
   watchConcurrency: number;
   /** Settings for each LLM stage of the pipeline. */
@@ -97,6 +99,30 @@ export interface ItemProcessResult {
   error?: string;
   /** USD cost of the agent work for this item. */
   costUsd?: number;
+}
+
+/**
+ * One line of the run ledger (JSONL): one finished run on one work item. Same
+ * core fields as the other agents' cost-ledger.jsonl, so the dashboard reads
+ * them all with one parser.
+ */
+export interface LedgerRecord {
+  /** ISO timestamp of when the run finished. */
+  at: string;
+  workItemId: number;
+  title: string;
+  outcome: 'completed' | 'failed';
+  mode: ItemMode;
+  /** The work item's spend so far: this run plus every earlier run on it. */
+  costUsd: number;
+  /** This run's spend alone. */
+  runCostUsd: number;
+  /** Per-stage usage of this run, in run order. */
+  stages: StageUsage[];
+  /** One-line summary of why the run failed, or what it could not deliver (e.g. the video). */
+  reason?: string;
+  /** The full error output of a failed run, capped in length. */
+  error?: string;
 }
 
 /** Connection details for a provisioned BC environment. */

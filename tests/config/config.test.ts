@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { join } from "node:path";
 import { loadConfig } from "../../src/config/index.ts";
 
 const validEnv: Record<string, string> = {
@@ -202,6 +203,12 @@ describe("loadConfig", () => {
     it("reads a custom OUTPUT_RETENTION_DAYS", () => {
       const config = loadConfig({ ...validEnv, OUTPUT_RETENTION_DAYS: "0" });
       expect(config.outputRetentionDays).toBe(0);
+    });
+
+    it("puts the run ledger in STATE_DIR unless COST_LOG_PATH overrides it", () => {
+      expect(loadConfig(validEnv).costLogPath).toBe(join(".state", "cost-ledger.jsonl"));
+      expect(loadConfig({ ...validEnv, STATE_DIR: "/app/.state" }).costLogPath).toBe(join("/app/.state", "cost-ledger.jsonl"));
+      expect(loadConfig({ ...validEnv, COST_LOG_PATH: "/x/l.jsonl" }).costLogPath).toBe("/x/l.jsonl");
     });
 
     it("reads LSP_PLUGIN_PATH", () => {

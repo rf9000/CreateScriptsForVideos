@@ -32,4 +32,9 @@ services:
       # via WinSCP). The container writes as the `claude` user, so the folder ends
       # up owned by uid 1001.
       - /home/azureuser/teams/continia-banking/output:/app/output
+      # Run ledger (cost-ledger.jsonl), read by the dashboard (monitor) for its history
+      - create-scripts-state:/app/.state
     restart: unless-stopped
+
+volumes:
+  create-scripts-state:

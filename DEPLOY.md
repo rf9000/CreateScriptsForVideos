@@ -145,6 +145,12 @@ same way here.
   every attempt that reached the pipeline (success or failure). Failures do not auto-retry; re-add
   the tag to request a fresh run. A failure before the pipeline starts (e.g. Azure DevOps briefly
   unavailable) keeps the tag, so the next cycle retries it.
+- **Run ledger:** every run that reached the pipeline appends one line to
+  `/app/.state/cost-ledger.jsonl` (`STATE_DIR`, default `.state`; or `COST_LOG_PATH`): work item,
+  title, outcome, mode, per-stage usage, `runCostUsd` and `costUsd` (the item's spend so far,
+  across retags). A failed run also gets `reason` (first line) and `error` (full message, capped
+  at 8000 characters). Dry runs (`test-item`) record nothing. The dashboard reads this file for
+  the processed list and the full history; mount the `create-scripts-state` volume into it.
 - **Resuming a failed item:** each item's output folder holds `pipeline-state.json` (no
   credentials). Run `docker compose exec create-scripts-for-videos bun src/cli/index.ts test-item
   <id> --resume` to continue from the last good step, e.g. reuse the generated PTE and the

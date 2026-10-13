@@ -3,6 +3,7 @@ import type {
   AppConfig,
   WorkItemResponse,
   ItemProcessResult,
+  ItemMode,
   ScriptResult,
 } from '../types/index.ts';
 import type { AttachmentRef } from '../sdk/azure-devops-client.ts';
@@ -11,6 +12,8 @@ import type { WorkItemContext, PipelineOptions } from './pipeline.ts';
 import * as sdk from '../sdk/azure-devops-client.ts';
 import { runPipeline } from './pipeline.ts';
 import { htmlToText } from './html.ts';
+import { appendRun, capError, summarizeError } from './cost-ledger.ts';
+import type { RunRecord } from './cost-ledger.ts';
 
 export interface ProcessorDeps {
   fetchComments: (config: AppConfig, workItemId: number) => Promise<string[]>;
@@ -37,6 +40,8 @@ export interface ProcessorDeps {
   report: (text: string) => void;
   readVideo: (path: string) => Uint8Array<ArrayBuffer>;
   fileSize: (path: string) => number;
+  /** Append a finished run to the dashboard's ledger. */
+  recordRun: (config: AppConfig, run: RunRecord) => void;
 }
 
 export const defaultProcessorDeps: ProcessorDeps = {
@@ -50,6 +55,7 @@ export const defaultProcessorDeps: ProcessorDeps = {
   report: (text) => console.log(text),
   readVideo: (path) => new Uint8Array(readFileSync(path)),
   fileSize: (path) => statSync(path).size,
+  recordRun: (config, run) => appendRun(config.costLogPath, run),
 };
 
 function log(message: string): void {
@@ -164,6 +170,17 @@ function buildFailureComment(result: ScriptResult): string {
   return lines.join('\n');
 }
 
+/** What a run left behind for the ledger, filled in as it goes. */
+interface RunTrack {
+  /**
+   * Set once the pipeline starts. Before that nothing was spent and nothing was
+   * provisioned, so a failure (e.g. a transient comment fetch error) keeps the
+   * tag, the item is retried on the next cycle, and the ledger gets no line.
+   */
+  attempted: boolean;
+  result?: ScriptResult;
+}
+
 export async function processItem(
   config: AppConfig,
   item: WorkItemResponse,
@@ -172,12 +189,57 @@ export async function processItem(
 ): Promise<ItemProcessResult> {
   const title = String(item.fields['System.Title'] ?? '(untitled)');
   const mode = options.mode ?? sdk.itemMode(config, item) ?? 'script';
-  log(`Processing item #${item.id}: ${title}`);
+  const track: RunTrack = { attempted: false };
+  const outcome = await runItem(config, item, deps, options, title, mode, track);
+  // Dry runs post nothing, so they record nothing.
+  if (track.attempted && !config.dryRun) safeRecordRun(deps, config, item.id, title, mode, track, outcome);
+  return outcome;
+}
 
-  // Set once the pipeline starts. Before that nothing was spent and nothing was
-  // provisioned, so a failure (e.g. a transient comment fetch error) keeps the
-  // tag and the item is retried on the next cycle.
-  let attempted = false;
+// The ledger is bookkeeping for the dashboard, so a failed write must never
+// change the outcome of an item.
+function safeRecordRun(
+  deps: ProcessorDeps,
+  config: AppConfig,
+  itemId: number,
+  title: string,
+  mode: ItemMode,
+  track: RunTrack,
+  outcome: ItemProcessResult,
+): void {
+  const video = track.result?.video;
+  const reason = outcome.error
+    ? summarizeError(outcome.error)
+    : video && !video.ok
+      ? summarizeError(`video not attached: ${video.error ?? 'unknown error'}`)
+      : undefined;
+  try {
+    deps.recordRun(config, {
+      at: new Date().toISOString(),
+      workItemId: itemId,
+      title,
+      outcome: outcome.processed ? 'completed' : 'failed',
+      mode,
+      runCostUsd: outcome.costUsd ?? 0,
+      stages: track.result?.stages ?? [],
+      ...(reason ? { reason } : {}),
+      ...(outcome.error ? { error: capError(outcome.error) } : {}),
+    });
+  } catch (err) {
+    log(`  Item #${itemId}: Skipping run ledger write — ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function runItem(
+  config: AppConfig,
+  item: WorkItemResponse,
+  deps: ProcessorDeps,
+  options: PipelineOptions,
+  title: string,
+  mode: ItemMode,
+  track: RunTrack,
+): Promise<ItemProcessResult> {
+  log(`Processing item #${item.id}: ${title}`);
   let result: ScriptResult | undefined;
 
   try {
@@ -193,8 +255,9 @@ export async function processItem(
     };
 
     log(`  Item #${item.id}: Running pipeline...`);
-    attempted = true;
+    track.attempted = true;
     result = await deps.runPipeline(config, context, { ...options, ...(mode === 'video' ? { mode } : {}) });
+    track.result = result;
     const costUsd = result.costUsd;
     log(`  Item #${item.id}: Agent cost $${(costUsd ?? 0).toFixed(4)}`);
 
@@ -249,7 +312,7 @@ export async function processItem(
     return { itemId: item.id, processed: true, costUsd };
   } catch (err) {
     log(`  Item #${item.id}: Error — ${err}`);
-    if (!attempted) {
+    if (!track.attempted) {
       log(`  Item #${item.id}: Pipeline not started; keeping the tag to retry next cycle`);
       return { itemId: item.id, processed: false, error: String(err) };
     }
@@ -277,7 +340,7 @@ export async function processItem(
     // failure) so the item isn't rediscovered. Re-tagging is how you request it
     // again. Skipped in dry-run (no writes). Best-effort — a failed removal just
     // means the item may be retried on the next cycle.
-    if (attempted && !config.dryRun) {
+    if (track.attempted && !config.dryRun) {
       try {
         const tags = String(item.fields['System.Tags'] ?? '').split(';').map((t) => t.trim().toLowerCase());
         const optIns = [config.createScriptTag, config.createVideoTag].filter((t) => tags.includes(t.toLowerCase()));
