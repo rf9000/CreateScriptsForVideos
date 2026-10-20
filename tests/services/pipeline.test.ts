@@ -76,8 +76,8 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     checkRecording: mock((_itemDir: string, _ptePath: string): string[] => []),
     discoverBankingApps: mock(() => [
       { dir: 'base-application', name: 'Continia Banking', application: '29.0.0.0', platform: '29.0.0.0' },
-      { dir: 'banking-dk', name: 'Continia Banking DK', application: '29.0.0.0' },
-      { dir: 'banking-w1', name: 'Continia Banking W1', application: '29.0.0.0' },
+      { dir: 'banking-dk', name: 'Continia Banking DK', id: 'dk-app-id', application: '29.0.0.0' },
+      { dir: 'banking-w1', name: 'Continia Banking W1', id: 'w1-app-id', application: '29.0.0.0' },
     ]),
   } satisfies PipelineDeps;
   return { deps, cli, query, store };
@@ -358,7 +358,8 @@ describe('runPipeline', () => {
     expect(result.status).toBe('success');
     expect(query).toHaveBeenCalledTimes(1);
     expect(cli.createEnvironment).not.toHaveBeenCalled();
-    expect(cli.installAppById).not.toHaveBeenCalled();
+    // Activation is done; only the country app (a step this state predates) is installed.
+    expect(cli.installAppById.mock.calls.map((c) => c[1])).toEqual(['w1-app-id']);
     expect(deps.clearState).not.toHaveBeenCalled();
   });
 });
@@ -393,5 +394,36 @@ describe('runPipeline — PTE identity', () => {
     const result = await runPipeline(testConfig(), context, {}, deps);
     expect(result.errorMessage).toContain('PTE app.json unreadable: Unexpected token');
     expect(cli.createEnvironment).not.toHaveBeenCalled();
+  });
+});
+
+describe('runPipeline — country app', () => {
+  test('installs the country app from the catalogue after deploy, before verify', async () => {
+    const { deps, cli } = makeDeps();
+    const result = await runPipeline(testConfig(), context, {}, deps);
+    expect(result.status).toBe('success');
+    expect(cli.installAppById.mock.calls.map((c) => c[1])).toEqual([ACTIVATION_APP_ID, 'w1-app-id']);
+  });
+
+  test('uses the localization\'s country app', async () => {
+    const { deps, cli } = makeDeps();
+    await runPipeline(testConfig({ envLocalization: 'dk' }), context, {}, deps);
+    expect(cli.installAppById.mock.calls.at(-1)![1]).toBe('dk-app-id');
+  });
+
+  test('a failed install fails the item with the app name and reason', async () => {
+    const cli = fakeCli({
+      installAppById: mock(async (_env: string, id: string) =>
+        (id === 'w1-app-id' ? { installed: false, alreadyPresent: false, reasonCode: 'not-found' } : { installed: true, alreadyPresent: false })),
+    });
+    const { deps } = makeDeps({ cli });
+    const result = await runPipeline(testConfig(), context, {}, deps);
+    expect(result.errorMessage).toBe('country app "Continia Banking W1" install failed (not-found)');
+  });
+
+  test('a resume after it was installed does not install it again', async () => {
+    const { deps, cli } = makeDeps({ saved: { generate: outputs.generate, validate: outputs.validate, profileId: 'profile-1', envId: 'env-1', activated: true, deployGaps: [], countryAppInstalled: true } as PipelineState });
+    await runPipeline(testConfig(), context, { resume: true }, deps);
+    expect(cli.installAppById).not.toHaveBeenCalled();
   });
 });

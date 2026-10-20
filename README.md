@@ -14,7 +14,7 @@ Watches Azure DevOps for work items tagged `create script` and turns each one in
    | Provision | Code (`continia env create` / `start`) | Fresh environment; profile derived from continia-banking's BC version and `CONTINIA_ENV_LOCALIZATION` |
    | Activate | Code (`continia deps install-by-id`) | Continia activation app installed |
    | Deploy | Agent (`prompts/deploy.md`, `continia-deps` / `continia-deploy` skills) | PTE (and `banking-demo` if needed) published |
-   | Verify | Code (`continia env apps`, `env users`) | PTE confirmed installed, credentials collected |
+   | Verify | Code (`continia deps install-by-id`, `env apps`, `env users`) | Country app (e.g. Continia Banking - W1) installed for Banking's activation, PTE confirmed installed, credentials collected |
 
 3. The script is attached to the work item, and a comment carries the environment URL and credentials. On failure, the comment explains why and lists any environment that is still running.
 4. The tag is removed after each attempt. Re-adding it requests a new run. To correct a result, comment what to change (the flow to show, the demo data wanted) and then re-add the tag. Comments posted after the pipeline's last post go to the agents as feedback that overrides the description, and the generate stage revises the previous script and PTE instead of starting over.

@@ -12,6 +12,8 @@ export interface BankingApp {
   /** Repo-relative directory, forward slashes. */
   dir: string;
   name: string;
+  /** The app's id, as the DemoPortal catalogue knows it. */
+  id?: string;
   application?: string;
   platform?: string;
 }
@@ -33,6 +35,7 @@ export function discoverBankingApps(repoPath: string): BankingApp[] {
           apps.push({
             dir: relative(root, absDir).split(sep).join('/'),
             name: raw['name'],
+            id: typeof raw['id'] === 'string' ? raw['id'] : undefined,
             application: typeof raw['application'] === 'string' ? raw['application'] : undefined,
             platform: typeof raw['platform'] === 'string' ? raw['platform'] : undefined,
           });

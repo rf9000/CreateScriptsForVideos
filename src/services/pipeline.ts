@@ -82,6 +82,8 @@ export interface PipelineState {
   videoAttempted?: boolean;
   /** recording.yml was written and passed the symbol check. */
   recordingChecked?: boolean;
+  /** The country app (e.g. Continia Banking - W1) is installed from the catalogue. */
+  countryAppInstalled?: boolean;
 }
 
 export interface PipelineDeps {
@@ -398,6 +400,22 @@ export async function runPipeline(
 
   // F. Verify the PTE is installed, then collect credentials.
   enter('verify');
+  // Banking's activation requires its country app; without it the first Banking page asks to
+  // install it. Deploy has put the country app's dependencies on the env, so install it now.
+  if (!state.countryAppInstalled && countryDir) {
+    const country = bankingApps.find((app) => app.dir === countryDir);
+    if (!country?.id) return failed(`no app id in ${countryDir}/app.json`);
+    try {
+      const install = await cli.installAppById(state.envId, country.id);
+      if (!install.installed) {
+        return failed(`country app "${country.name}" install failed (${install.reasonCode ?? 'no reason code'})`);
+      }
+    } catch (err) {
+      return failed(`country app "${country.name}" install failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    state.countryAppInstalled = true;
+    save();
+  }
   try {
     const appName = deps.readAppName(paths.ptePath);
     const apps = await cli.listApps(state.envId);
