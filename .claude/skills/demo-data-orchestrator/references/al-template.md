@@ -12,14 +12,15 @@ these files directly into the PTE folder the caller gives you (no subfolder, one
 
 ## app.json
 
-Before writing it, generate the id with `bun -e "console.log(crypto.randomUUID())"` and read
-`base-application/app.json` for the `platform`, `application`, and Continia Banking `version`.
+Before writing it, read `base-application/app.json` for the `platform`, `application`, and
+Continia Banking `version`. The `id`, `name` and `publisher` are fixed: they are the identity
+continia-banking lists in `internalsVisibleTo`.
 
 ```json
 {
-  "id": "<generated GUID>",
-  "name": "Continia Demo Data - <Feature Name>",
-  "publisher": "Continia Software",
+  "id": "6e549e35-d1b2-4878-a37a-a736c22f35bf",
+  "name": "Continia Banking Internal Access",
+  "publisher": "Continia Software Partner",
   "version": "1.0.0.0",
   "runtime": "17.0",
   "target": "Cloud",
@@ -37,24 +38,18 @@ Before writing it, generate the id with `bun -e "console.log(crypto.randomUUID()
       "name": "Continia Banking",
       "publisher": "Continia Software",
       "version": "<base-application/app.json version>"
-    },
-    {
-      "id": "6e549e35-d1b2-4878-a37a-a736c22f35bf",
-      "name": "Continia Banking Internal Access",
-      "publisher": "Continia Software Partner",
-      "version": "1.0.0.0"
     }
   ],
   "idRanges": [{ "from": 50000, "to": 50099 }]
 }
 ```
 
-- A zero GUID fails compilation with AL1053.
 - Versions must match the symbols: hardcoding, say, `28.0.0.0` when the symbols are v27 fails
   compilation.
-- The Internal Access dependency is how the PTE reaches `Access = Internal` CTS-* tables, enums,
-  and codeunits. If compilation reports a version mismatch on it, use the version that
-  `continia deps` downloaded.
+- The Internal Access identity is how the PTE reaches `Access = Internal` CTS-* tables, enums,
+  and codeunits: continia-banking's `internalsVisibleTo` names exactly that id, name and
+  publisher. No app with that identity is published, so never list it as a dependency. The
+  pipeline rewrites `id`, `name` and `publisher` to this identity before validate if they differ.
 - Add a dependency for each other Continia app (Import, Export, ...) whose objects the codeunit
   references. The deploy stage refreshes the PTE's symbols from the environment when it compiles.
 - 50000-50099 lies outside the Continia reserved ranges and is used for demo extensions.
@@ -152,8 +147,8 @@ codeunit 50000 "Demo Data - <Feature Name>"
 ## Rules and their reasons
 
 **Object header.** ID 50000, file name `InstallDemoData.Codeunit.al`, `Access = Internal`. The
-`app.json` name must start with "Continia" (e.g. `"Continia Demo Data - Bank Reconciliation"`)
-because the pipeline checks for that prefix.
+`app.json` has the Internal Access identity (see above), so its name is
+`"Continia Banking Internal Access"` for every feature.
 
 **Install subtype and idempotency.** The pipeline provisions a fresh environment per work item, so
 `OnInstallAppPerCompany()` fires on the first publish. A failed install leaves the app uninstalled

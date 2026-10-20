@@ -50,7 +50,7 @@ function fakeCli(overrides: Partial<ContiniaCli> = {}): { [K in keyof ContiniaCl
     startEnvironment: mock(async () => {}),
     getEnvironment: mock(async () => ({ id: 'env-1', name: 'Demo #42', url: 'https://bc/env-1', status: 'Running' })),
     installAppById: mock(async () => ({ installed: true, alreadyPresent: false })),
-    listApps: mock(async () => [{ name: 'Continia Demo Data - Merge Rules', publisher: 'P', version: '1' }]),
+    listApps: mock(async () => [{ name: 'Continia Banking Internal Access', publisher: 'P', version: '1' }]),
     getUsers: mock(async () => [{ username: 'ADMIN', password: 'pw' }]),
     ...overrides,
   } as { [K in keyof ContiniaCli]: ReturnType<typeof mock> };
@@ -70,7 +70,8 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     }),
     clearState: mock(() => {}),
     fileExists: mock(() => true),
-    readAppName: mock(() => 'Continia Demo Data - Merge Rules'),
+    readAppName: mock(() => 'Continia Banking Internal Access'),
+    enforcePteIdentity: mock((_ptePath: string): string[] => []),
     makeVideo: mock(async () => ({ ok: true, videoPath: '/out/42/demo.mp4' }) as { ok: boolean; videoPath?: string; error?: string }),
     checkRecording: mock((_itemDir: string, _ptePath: string): string[] => []),
     discoverBankingApps: mock(() => [
@@ -243,7 +244,7 @@ describe('runPipeline', () => {
     const cli = fakeCli({ listApps: mock(async () => []) });
     const { deps } = makeDeps({ cli });
     const result = await runPipeline(testConfig(), context, {}, deps);
-    expect(result.errorMessage).toContain('"Continia Demo Data - Merge Rules" is not installed');
+    expect(result.errorMessage).toContain('"Continia Banking Internal Access" is not installed');
   });
 
   test('environment errors become failures with the env attached', async () => {
@@ -375,5 +376,22 @@ describe('runPipeline — stage events for the dashboard', () => {
     const seen: string[] = [];
     await runPipeline(testConfig(), context, { mode: 'video', onStage: (s) => seen.push(s) }, deps);
     expect(seen.slice(-3)).toEqual(['verify', 'recording', 'video']);
+  });
+});
+
+describe('runPipeline — PTE identity', () => {
+  test('gives the PTE the Internal Access identity before validate, on a resume too', async () => {
+    const { deps, query } = makeDeps({ saved: { generate: outputs.generate, validate: outputs.validate, profileId: 'profile-1' } as PipelineState });
+    await runPipeline(testConfig(), context, { resume: true }, deps);
+    expect(deps.enforcePteIdentity).toHaveBeenCalledWith(itemPaths(testConfig(), 42).ptePath);
+    expect(query).toHaveBeenCalledTimes(1); // deploy only
+  });
+
+  test('an unreadable app.json fails before any environment is made', async () => {
+    const { deps, cli } = makeDeps();
+    deps.enforcePteIdentity.mockImplementation(() => { throw new Error('Unexpected token'); });
+    const result = await runPipeline(testConfig(), context, {}, deps);
+    expect(result.errorMessage).toContain('PTE app.json unreadable: Unexpected token');
+    expect(cli.createEnvironment).not.toHaveBeenCalled();
   });
 });

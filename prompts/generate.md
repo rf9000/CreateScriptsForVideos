@@ -8,8 +8,9 @@ Build the demo data and the recording script for the feature in the work item.
    the PTE folder, and write the recording script to the recording script file (that exact path,
    not a feature-named file). If the feature needs no seeded data, use `demo-spec-generator` for the
    script alone and still produce a minimal PTE so the deploy stage has something to publish.
-3. Check that the PTE's `app.json` name starts with "Continia" and that the install codeunit ends
-   with `VerifyDemoData()`.
+3. Check that the PTE's `app.json` has the Internal Access identity (id, name and publisher from
+   the invariants) with no dependency on that id, and that the install codeunit ends with
+   `VerifyDemoData()`.
 
 A separate validation stage reviews your output next, and a deploy stage compiles and publishes it,
 so don't compile, deploy, or create environments here.

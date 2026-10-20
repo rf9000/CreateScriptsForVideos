@@ -13,6 +13,7 @@ import { makeVideo } from '../video/make-video.ts';
 import type { VideoResult } from '../video/make-video.ts';
 import { checkRecording, symbolDirsFor } from '../video/recording-check.ts';
 import { loadSymbolIndex } from '../video/symbols.ts';
+import { enforcePteIdentity } from './pte-identity.ts';
 
 /**
  * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
@@ -21,8 +22,6 @@ import { loadSymbolIndex } from '../video/symbols.ts';
  * each step so a failed item can resume from the last good step.
  */
 
-/** GUID of the "Continia Banking Internal Access" app the PTE depends on. */
-export const INTERNAL_ACCESS_APP_ID = '6e549e35-d1b2-4878-a37a-a736c22f35bf';
 /** GUID of the Continia Core Internal Activation App; Continia products need it on a fresh env. */
 export const ACTIVATION_APP_ID = 'c3755ece-dab0-4d16-987d-040661f18522';
 
@@ -94,6 +93,8 @@ export interface PipelineDeps {
   clearState: (path: string) => void;
   fileExists: (path: string) => boolean;
   readAppName: (ptePath: string) => string;
+  /** Gives the PTE the Internal Access identity; returns what it changed. */
+  enforcePteIdentity: (ptePath: string) => string[];
   discoverBankingApps: (repoPath: string) => BankingApp[];
   makeVideo: (input: Parameters<typeof makeVideo>[0]) => Promise<VideoResult>;
   /** Structure + symbol-name check of recording.yml; writes FastTab hints when clean. */
@@ -115,6 +116,7 @@ export const defaultPipelineDeps: PipelineDeps = {
   discoverBankingApps,
   makeVideo: (input) => makeVideo(input),
   checkRecording: (itemDir, ptePath) => checkRecording(itemDir, loadSymbolIndex(symbolDirsFor(ptePath))),
+  enforcePteIdentity: (ptePath) => enforcePteIdentity(ptePath),
   readAppName: (ptePath) => {
     const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
     if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
@@ -308,6 +310,16 @@ export async function runPipeline(
     if (!deps.fileExists(join(paths.ptePath, 'app.json'))) return failed(`PTE app.json not written in ${paths.ptePath}`);
     state.generate = run.output;
     save();
+  }
+
+  // The PTE sees internal objects only with the identity continia-banking grants
+  // through internalsVisibleTo. Enforced in code on every run, resumes included,
+  // so an older or slightly wrong app.json never reaches deploy.
+  try {
+    const changes = deps.enforcePteIdentity(paths.ptePath);
+    if (changes.length) log(`  PTE identity fixed: ${changes.join('; ')}`);
+  } catch (err) {
+    return failed(`PTE app.json unreadable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // B. Validate: blocking gate; the stage fixes and re-validates on its own.

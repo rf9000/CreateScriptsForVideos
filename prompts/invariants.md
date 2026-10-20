@@ -10,10 +10,13 @@ These rules hold for every stage:
 
 - **The continia-banking repo is read-only.** Read it and navigate it with LSP as much as you need.
   Write only to the recording script file and the PTE folder given under "Paths for this item".
-- **Internal access comes from a dependency.** The PTE reaches `Access = Internal` objects by
-  depending on the "Continia Banking Internal Access" app (id
-  `6e549e35-d1b2-4878-a37a-a736c22f35bf`, publisher "Continia Software Partner"). Don't add
-  `internalsVisibleTo` anywhere.
+- **The PTE takes the Internal Access identity.** continia-banking's `app.json` grants internal
+  access through `internalsVisibleTo` to one identity: id `6e549e35-d1b2-4878-a37a-a736c22f35bf`,
+  name "Continia Banking Internal Access", publisher "Continia Software Partner". The PTE's
+  `app.json` uses exactly that id, name and publisher, and that is how it reaches
+  `Access = Internal` objects. No app with that identity is published, so never add it as a
+  dependency or try to install it. Don't add `internalsVisibleTo` anywhere. The pipeline also
+  enforces the identity in code before validate.
 - **One PTE, in place.** `app.json` sits directly in the PTE folder. No nested or feature-named
   subfolders, no second copy. Revisions edit the existing files.
 - **The pipeline supplies everything the demo needs.** Data comes from the PTE, or from the

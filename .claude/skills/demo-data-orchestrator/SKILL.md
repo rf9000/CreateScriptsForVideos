@@ -10,7 +10,7 @@ that data on install, then writes the human-readable Markdown recording script.
 
 The skill runs unattended inside the pipeline's generate stage. Make reasonable decisions yourself
 and record them as assumptions; nobody is available to answer questions. The pipeline invariants
-apply (read-only continia-banking repo, internal access via the Internal Access dependency, one PTE
+apply (read-only continia-banking repo, internal access via the Internal Access identity, one PTE
 in place, no presenter prerequisites).
 
 **Outputs**, at the paths the caller provides:
@@ -54,13 +54,15 @@ Follow `references/data-research-strategy.md`. In outline:
 
 Follow `references/al-template.md` for the file contents. The essentials:
 
-- `app.json` depends on Continia Banking (`83461f48-dd16-49ea-b00c-e656830c640f`) and on Continia
-  Banking Internal Access (`6e549e35-d1b2-4878-a37a-a736c22f35bf`), plus any other Continia app
-  whose objects the codeunit references. Generate the `id` with
-  `bun -e "console.log(crypto.randomUUID())"`; a zero GUID fails with AL1053. Copy `platform`,
-  `application`, and the Continia Banking version from `base-application/app.json` so the PTE
-  compiles against the same symbols.
-- The name is `"Continia Demo Data - <Feature Name>"`; the pipeline requires the "Continia" prefix.
+- `app.json` takes the Internal Access identity that continia-banking lists in
+  `internalsVisibleTo`: id `6e549e35-d1b2-4878-a37a-a736c22f35bf`, name
+  `"Continia Banking Internal Access"`, publisher `"Continia Software Partner"`. That identity is
+  what lets the PTE reach `Access = Internal` objects. It is not an app to depend on: none is
+  published. Don't generate an id or a feature name.
+- `app.json` depends on Continia Banking (`83461f48-dd16-49ea-b00c-e656830c640f`), plus any other
+  Continia app whose objects the codeunit references. Copy `platform`, `application`, and the
+  Continia Banking version from `base-application/app.json` so the PTE compiles against the same
+  symbols.
 - The install codeunit (ID 50000, range 50000-50099) runs `CreateDemoData()` then `VerifyDemoData()`
   from `OnInstallAppPerCompany()`. `VerifyDemoData()` re-reads every seeded record and raises an
   error naming the first missing one, so a broken PTE fails at publish time instead of producing an
