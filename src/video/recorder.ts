@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
-import type { Locator } from 'playwright';
-import { mkdirSync } from 'fs';
+import type { Locator, Page } from 'playwright';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { animateClick, injectCursor } from './cursor.ts';
 import { dismissTeachingTips, findTarget, stage, typeVisibly, visibility } from './staging.ts';
@@ -101,6 +101,17 @@ export function waitAtEnd(nowMs: number, narrationEndsAtMs: number): number {
   return Math.max(0, narrationEndsAtMs - nowMs) + END_TAIL_MS;
 }
 
+async function dumpFrames(page: Page, path: string): Promise<void> {
+  const parts: string[] = [];
+  for (const [i, frame] of page.frames().entries()) {
+    const text = await frame.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+    const buttons = await frame.getByRole('button').allInnerTexts().catch(() => []);
+    const dialogs = await frame.locator('[role=dialog],[role=alertdialog]').count().catch(() => 0);
+    parts.push(`=== frame ${i} ${frame.url()}\ndialogs: ${dialogs}\nbuttons: ${buttons.map((b) => b.trim()).filter(Boolean).join(' | ')}\n${text.slice(0, 4000)}`);
+  }
+  writeFileSync(path, parts.join('\n\n'));
+}
+
 export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
   mkdirSync(join(opts.outDir, 'shots'), { recursive: true });
   const browser = await chromium.launch({ headless: !opts.headed });
@@ -175,6 +186,8 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
         }
         await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
+        // A failed step also keeps each frame's visible text and buttons, to diagnose without the image.
+        if (entry.error) await dumpFrames(page, join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.txt`)).catch(() => {});
         const pause = pauseAfterStep(step.type);
         if (!entry.error && pause > 0) await page.waitForTimeout(pause);
         timing.steps.push({ stepIndex: index, startMs: stepStart, endMs: Date.now() - videoStart });

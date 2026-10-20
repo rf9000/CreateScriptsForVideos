@@ -77,9 +77,25 @@ export function errorText(e: unknown): string | undefined {
  * off by default; Yes stores the setting for the tenant, so it is asked only once.
  */
 const STARTUP_DIALOGS = [
-  { text: 'Welcome to your Continia Demo Environment', button: 'Close' },
-  { text: 'allow Continia Software extensions to communicate with external services', button: 'Yes' },
+  { text: /Welcome to your Continia Demo Environment/i, button: 'Close' },
+  { text: /communicate with external services/i, button: 'Yes' },
 ];
+
+/**
+ * The dialog's text and button in whichever frame shows them. BC's confirm dialogs don't all
+ * carry role=dialog, and some render outside the client iframe, so match on visible text.
+ */
+async function answerDialog(page: Page, text: RegExp, button: string): Promise<boolean> {
+  for (const frame of page.frames()) {
+    const shown = await frame.getByText(text).first().isVisible().catch(() => false);
+    if (!shown) continue;
+    const target = frame.getByRole('button', { name: button, exact: true }).last();
+    if (!(await target.isVisible().catch(() => false))) continue;
+    await target.click();
+    return true;
+  }
+  return false;
+}
 
 /**
  * Answers the startup dialogs. Some open only after the page's first server call, so it keeps
@@ -89,13 +105,11 @@ export async function dismissStartupDialogs(page: Page, settleMs = 0): Promise<s
   const closed: string[] = [];
   let quietSince = Date.now();
   for (let i = 0; i < 40; i++) {
-    const frame = await awaitFrame(page);
+    await awaitFrame(page);
     let hit = false;
     for (const { text, button } of STARTUP_DIALOGS) {
-      const dialog = frame.locator('[role=dialog]:visible', { hasText: text }).last();
-      if ((await dialog.count()) === 0) continue;
-      await dialog.getByRole('button', { name: button, exact: true }).last().click();
-      closed.push(text);
+      if (!(await answerDialog(page, text, button))) continue;
+      closed.push(text.source);
       hit = true;
     }
     if (hit) quietSince = Date.now();
