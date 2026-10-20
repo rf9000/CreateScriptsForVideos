@@ -73,4 +73,8 @@ describe('startUrl', () => {
   test('no page id: Role Center', () => {
     expect(startUrl('https://bc/env-1/', 'BUSINESS MANAGER')).toBe('https://bc/env-1/?profile=BUSINESS%20MANAGER');
   });
+  test('re-applied to the URL the login redirect landed on, keeping its own query', () => {
+    expect(startUrl('https://bc/env-1/?tenant=default&profile=OTHER', 'BUSINESS MANAGER', 71553588))
+      .toBe('https://bc/env-1/?tenant=default&profile=BUSINESS%20MANAGER&page=71553588');
+  });
 });

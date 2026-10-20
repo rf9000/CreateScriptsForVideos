@@ -127,7 +127,8 @@ export async function openSession(
   const page = await context.newPage();
   // The video starts with the page; the loading screen before the first step is trimmed later.
   const videoStartedAt = Date.now();
-  await page.goto(landed);
+  // The login redirect drops the query, so the deep link goes back onto where it landed.
+  await page.goto(startUrl(landed, opts.profile, opts.pageId));
   await awaitFrame(page);
   await dismissStartupDialogs(page);
   return { context, page, videoStartedAt };
