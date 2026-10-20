@@ -81,9 +81,14 @@ const STARTUP_DIALOGS = [
   { text: 'allow Continia Software extensions to communicate with external services', button: 'Yes' },
 ];
 
-export async function dismissStartupDialogs(page: Page): Promise<string[]> {
+/**
+ * Answers the startup dialogs. Some open only after the page's first server call, so it keeps
+ * looking until none has shown for `settleMs`.
+ */
+export async function dismissStartupDialogs(page: Page, settleMs = 0): Promise<string[]> {
   const closed: string[] = [];
-  for (let i = 0; i < 5; i++) {
+  let quietSince = Date.now();
+  for (let i = 0; i < 40; i++) {
     const frame = await awaitFrame(page);
     let hit = false;
     for (const { text, button } of STARTUP_DIALOGS) {
@@ -93,11 +98,16 @@ export async function dismissStartupDialogs(page: Page): Promise<string[]> {
       closed.push(text);
       hit = true;
     }
-    if (!hit) break;
+    if (hit) quietSince = Date.now();
+    else if (Date.now() - quietSince >= settleMs) break;
     await page.waitForTimeout(500);
   }
+  if (closed.length) console.log(`  Answered startup dialog(s): ${closed.join(' | ')}`);
   return closed;
 }
+
+/** How long to keep watching for a startup dialog after the start page loads. */
+const DIALOG_SETTLE_MS = 8_000;
 
 /** Web client URL with profile and, optionally, the start page as a deep link. */
 export function startUrl(base: string, profile?: string, pageId?: number | string): string {
@@ -133,7 +143,7 @@ export async function openSession(
   if (opts.pageId !== undefined) {
     await authPage.goto(deepLink);
     await awaitFrame(authPage);
-    await dismissStartupDialogs(authPage);
+    await dismissStartupDialogs(authPage, DIALOG_SETTLE_MS);
   }
   const cookies = await auth.cookies();
   await auth.close();
@@ -145,6 +155,7 @@ export async function openSession(
   const videoStartedAt = Date.now();
   await page.goto(deepLink);
   await awaitFrame(page);
-  await dismissStartupDialogs(page);
+  // Still in the part of the video that gets trimmed.
+  await dismissStartupDialogs(page, opts.pageId !== undefined ? DIALOG_SETTLE_MS : 0);
   return { context, page, videoStartedAt };
 }
