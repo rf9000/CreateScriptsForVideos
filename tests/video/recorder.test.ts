@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { pauseAfterStep, sliceFor, stageSafely, waitAtEnd, waitBeforeStep } from '../../src/video/recorder.ts';
-import { errorText, startUrl } from '../../src/video/bc-session.ts';
+import { errorText, startUrl, wizardMove } from '../../src/video/bc-session.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
 const rec: Recording = {
@@ -76,5 +76,13 @@ describe('startUrl', () => {
   test('re-applied to the URL the login redirect landed on, keeping its own query', () => {
     expect(startUrl('https://bc/env-1/?tenant=default&profile=OTHER', 'BUSINESS MANAGER', 71553588))
       .toBe('https://bc/env-1/?tenant=default&profile=BUSINESS%20MANAGER&page=71553588');
+  });
+});
+
+describe('wizardMove', () => {
+  test('Finish wins when enabled, else Next, else stuck', () => {
+    expect(wizardMove({ finish: true, next: true })).toBe('finish');
+    expect(wizardMove({ finish: false, next: true })).toBe('next');
+    expect(wizardMove({ finish: false, next: false })).toBe('stuck');
   });
 });

@@ -123,6 +123,56 @@ export async function dismissStartupDialogs(page: Page, settleMs = 0): Promise<s
 /** How long to keep watching for a startup dialog after the start page loads. */
 const DIALOG_SETTLE_MS = 8_000;
 
+/** A Continia product's activation wizard, opened instead of the product's first page. */
+const ACTIVATION_WIZARD = /Welcome to the activation of/i;
+const MAX_WIZARD_PAGES = 15;
+
+/** Finish when it's enabled, else Next; neither means the page wants input we can't give. */
+export function wizardMove(state: { finish: boolean; next: boolean }): 'finish' | 'next' | 'stuck' {
+  return state.finish ? 'finish' : state.next ? 'next' : 'stuck';
+}
+
+async function enabledButton(page: Page, name: string) {
+  for (const frame of page.frames()) {
+    const button = frame.getByRole('button', { name, exact: true }).last();
+    if ((await button.isVisible().catch(() => false)) && (await button.isEnabled().catch(() => false))) return button;
+  }
+  return undefined;
+}
+
+async function wizardText(page: Page): Promise<string> {
+  const texts = await Promise.all(page.frames().slice(1).map((f) => f.locator('body').innerText({ timeout: 2000 }).catch(() => '')));
+  return texts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+/**
+ * Walks a Continia activation wizard off camera: Next until Finish is enabled, then Finish.
+ * Activation is per company and asked once, so the video then opens the real start page.
+ * Throws with the page's text when a page has neither button enabled.
+ */
+export async function completeActivationWizards(page: Page): Promise<void> {
+  let inWizard = false; // past its welcome page: later pages don't repeat the welcome text
+  for (let clicks = 0; clicks < MAX_WIZARD_PAGES; clicks++) {
+    await awaitFrame(page);
+    let welcome = false;
+    for (const frame of page.frames()) {
+      if (await frame.getByText(ACTIVATION_WIZARD).first().isVisible().catch(() => false)) welcome = true;
+    }
+    if (!welcome && !inWizard) return;
+    const finish = await enabledButton(page, 'Finish');
+    const next = await enabledButton(page, 'Next');
+    const move = wizardMove({ finish: finish !== undefined, next: next !== undefined });
+    const text = await wizardText(page);
+    console.log(`  Activation wizard: ${move} — ${text}`);
+    if (move === 'stuck') throw new Error(`activation wizard needs input on: ${text}`);
+    await (finish ?? next)!.click();
+    // After Finish, another product's wizard may follow; it starts with its own welcome page.
+    inWizard = move === 'next';
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`activation wizard still open after ${MAX_WIZARD_PAGES} clicks`);
+}
+
 /** Web client URL with profile and, optionally, the start page as a deep link. */
 export function startUrl(base: string, profile?: string, pageId?: number | string): string {
   const url = new URL(base);
@@ -158,6 +208,7 @@ export async function openSession(
     await authPage.goto(deepLink);
     await awaitFrame(authPage);
     await dismissStartupDialogs(authPage, DIALOG_SETTLE_MS);
+    await completeActivationWizards(authPage);
   }
   const cookies = await auth.cookies();
   await auth.close();
