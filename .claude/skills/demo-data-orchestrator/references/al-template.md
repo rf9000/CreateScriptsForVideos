@@ -52,7 +52,12 @@ continia-banking lists in `internalsVisibleTo`.
   pipeline rewrites `id`, `name` and `publisher` to this identity before validate if they differ.
 - Add a dependency for each other Continia app (Import, Export, ...) whose objects the codeunit
   references. The deploy stage refreshes the PTE's symbols from the environment when it compiles.
-- 50000-50099 lies outside the Continia reserved ranges and is used for demo extensions.
+- 50000-50099 lies outside the Continia reserved ranges and is used for demo extensions. 50099
+  is the pipeline's: before validate it writes `ActivateContinia.Codeunit.al` (codeunit 50099,
+  "Demo Activate Continia"), adds the Continia Core Internal Activation App dependency, and puts
+  `Codeunit.Run(Codeunit::"Demo Activate Continia");` first in `OnInstallAppPerCompany()`. That
+  activates Continia Banking in the company before the demo data is seeded. Don't write or edit
+  any of it yourself.
 
 ## .vscode/launch.json
 

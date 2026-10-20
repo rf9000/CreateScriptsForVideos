@@ -124,6 +124,7 @@ describe('waitForRunning', () => {
         id: 'e1', name: 'n', url: 'u', status: statuses[Math.min(i++, statuses.length - 1)]!,
       })),
       installAppById: mock(async () => ({ installed: true, alreadyPresent: false })),
+      installDependencies: mock(async () => {}),
       listApps: mock(async () => []),
       getUsers: mock(async () => []),
     };
@@ -157,5 +158,14 @@ describe('waitForRunning', () => {
     await expect(waitForRunning(cli, 'e1', 5_000, 1_000, clock())).rejects.toThrow(
       'not Running after 0 min (last status Creating)',
     );
+  });
+});
+
+describe('installDependencies', () => {
+  test('runs deps install from the given folder with the app folder relative to it', async () => {
+    const exec = execReturning({ stdout: 'done' });
+    await createContiniaCli(testConfig(), exec).installDependencies('e1', 'banking-w1', '/repos/banking');
+    expect(exec.mock.calls[0]![0]).toEqual(['continia', '--auth-method', 'api-token', 'deps', 'install', 'e1', 'banking-w1']);
+    expect(exec.mock.calls[0]![3]).toBe('/repos/banking');
   });
 });

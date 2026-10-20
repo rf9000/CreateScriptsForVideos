@@ -159,6 +159,8 @@ export async function completeActivationWizards(page: Page): Promise<void> {
       if (await frame.getByText(ACTIVATION_WIZARD).first().isVisible().catch(() => false)) welcome = true;
     }
     if (!welcome && !inWizard) return;
+    // An error dialog (e.g. "You must specify a user ID") sits over the wizard with an OK button.
+    if (await enabledButton(page, 'OK')) throw new Error(`activation wizard error: ${await wizardText(page)}`);
     const finish = await enabledButton(page, 'Finish');
     const next = await enabledButton(page, 'Next');
     const move = wizardMove({ finish: finish !== undefined, next: next !== undefined });

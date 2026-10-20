@@ -50,6 +50,7 @@ function fakeCli(overrides: Partial<ContiniaCli> = {}): { [K in keyof ContiniaCl
     startEnvironment: mock(async () => {}),
     getEnvironment: mock(async () => ({ id: 'env-1', name: 'Demo #42', url: 'https://bc/env-1', status: 'Running' })),
     installAppById: mock(async () => ({ installed: true, alreadyPresent: false })),
+    installDependencies: mock(async () => {}),
     listApps: mock(async () => [{ name: 'Continia Banking Internal Access', publisher: 'P', version: '1' }]),
     getUsers: mock(async () => [{ username: 'ADMIN', password: 'pw' }]),
     ...overrides,
@@ -72,6 +73,7 @@ function makeDeps(opts: { cli?: ReturnType<typeof fakeCli>; query?: ReturnType<t
     fileExists: mock(() => true),
     readAppName: mock(() => 'Continia Banking Internal Access'),
     enforcePteIdentity: mock((_ptePath: string): string[] => []),
+    enforcePteActivation: mock((_ptePath: string): string[] => []),
     makeVideo: mock(async () => ({ ok: true, videoPath: '/out/42/demo.mp4' }) as { ok: boolean; videoPath?: string; error?: string }),
     checkRecording: mock((_itemDir: string, _ptePath: string): string[] => []),
     discoverBankingApps: mock(() => [
@@ -392,17 +394,28 @@ describe('runPipeline — PTE identity', () => {
     const { deps, cli } = makeDeps();
     deps.enforcePteIdentity.mockImplementation(() => { throw new Error('Unexpected token'); });
     const result = await runPipeline(testConfig(), context, {}, deps);
-    expect(result.errorMessage).toContain('PTE app.json unreadable: Unexpected token');
+    expect(result.errorMessage).toContain('PTE check failed: Unexpected token');
     expect(cli.createEnvironment).not.toHaveBeenCalled();
   });
 });
 
 describe('runPipeline — country app', () => {
-  test('installs the country app from the catalogue after deploy, before verify', async () => {
-    const { deps, cli } = makeDeps();
+  test('installs the country app and its dependencies before deploy, after the activation app', async () => {
+    const { deps, cli, query } = makeDeps();
     const result = await runPipeline(testConfig(), context, {}, deps);
     expect(result.status).toBe('success');
     expect(cli.installAppById.mock.calls.map((c) => c[1])).toEqual([ACTIVATION_APP_ID, 'w1-app-id']);
+    expect(cli.installDependencies.mock.calls[0]!.slice(0, 2)).toEqual(['env-1', 'banking-w1']);
+    const deployCall = query.mock.invocationCallOrder[2]!;
+    expect(cli.installAppById.mock.invocationCallOrder[1]!).toBeLessThan(deployCall);
+    expect(cli.installDependencies.mock.invocationCallOrder[0]!).toBeLessThan(cli.installAppById.mock.invocationCallOrder[1]!);
+  });
+
+  test('the PTE gets its activation before validate', async () => {
+    const { deps, query } = makeDeps();
+    await runPipeline(testConfig(), context, {}, deps);
+    expect(deps.enforcePteActivation).toHaveBeenCalledWith(itemPaths(testConfig(), 42).ptePath);
+    expect(deps.enforcePteActivation.mock.invocationCallOrder[0]!).toBeLessThan(query.mock.invocationCallOrder[1]!);
   });
 
   test('uses the localization\'s country app', async () => {

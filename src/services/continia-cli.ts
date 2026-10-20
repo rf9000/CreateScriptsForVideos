@@ -17,6 +17,7 @@ export type Exec = (
   cmd: string[],
   timeoutMs: number,
   env: Record<string, string | undefined>,
+  cwd?: string,
 ) => Promise<ExecResult>;
 
 export class ContiniaCliError extends Error {
@@ -66,14 +67,16 @@ export interface ContiniaCli {
   startEnvironment(envId: string): Promise<void>;
   getEnvironment(envId: string): Promise<EnvInfo>;
   installAppById(envId: string, appId: string): Promise<InstallResult>;
+  /** Install an app's direct dependencies on the env; `appDir` is relative to `cwd`. */
+  installDependencies(envId: string, appDir: string, cwd: string): Promise<void>;
   listApps(envId: string): Promise<InstalledApp[]>;
   getUsers(envId: string): Promise<EnvUser[]>;
 }
 
 const COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
-const defaultExec: Exec = async (cmd, timeoutMs, env) => {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', timeout: timeoutMs, env });
+const defaultExec: Exec = async (cmd, timeoutMs, env, cwd) => {
+  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', timeout: timeoutMs, env, ...(cwd ? { cwd } : {}) });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -123,7 +126,7 @@ function asObject(value: unknown): Json {
 
 export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): ContiniaCli {
   /** Run one command. `secret` keeps stdout out of error messages (passwords). */
-  async function run(args: string[], opts: { json?: boolean; secret?: boolean } = {}): Promise<unknown> {
+  async function run(args: string[], opts: { json?: boolean; secret?: boolean; cwd?: string } = {}): Promise<unknown> {
     const json = opts.json ?? true;
     const cmd = [
       config.continiaCliPath,
@@ -137,7 +140,7 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
     const env = config.continiaApiToken
       ? { ...process.env, CONTINIA_API_TOKEN: config.continiaApiToken }
       : process.env;
-    const result = await exec(cmd, COMMAND_TIMEOUT_MS, env);
+    const result = await exec(cmd, COMMAND_TIMEOUT_MS, env, opts.cwd);
     if (result.exitCode !== 0) {
       const detail = (result.stderr.trim() || (opts.secret ? '' : result.stdout.trim())).slice(0, 500);
       throw new ContiniaCliError(`${label} exited ${result.exitCode}: ${detail}`);
@@ -199,6 +202,11 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
         alreadyPresent: obj['alreadyPresent'] === true,
         ...(typeof obj['reasonCode'] === 'string' ? { reasonCode: obj['reasonCode'] } : {}),
       };
+    },
+
+    async installDependencies(envId, appDir, cwd) {
+      // The CLI finds apps relative to the current directory and rejects some absolute paths.
+      await run(['deps', 'install', envId, appDir], { json: false, cwd });
     },
 
     async listApps(envId) {

@@ -14,6 +14,7 @@ import type { VideoResult } from '../video/make-video.ts';
 import { checkRecording, symbolDirsFor } from '../video/recording-check.ts';
 import { loadSymbolIndex } from '../video/symbols.ts';
 import { enforcePteIdentity } from './pte-identity.ts';
+import { enforcePteActivation } from './pte-activation.ts';
 
 /**
  * The per-item pipeline. LLM stages (generate, validate, deploy) each run as a
@@ -97,6 +98,8 @@ export interface PipelineDeps {
   readAppName: (ptePath: string) => string;
   /** Gives the PTE the Internal Access identity; returns what it changed. */
   enforcePteIdentity: (ptePath: string) => string[];
+  /** Makes the PTE activate Continia Banking first on install; returns what it changed. */
+  enforcePteActivation: (ptePath: string) => string[];
   discoverBankingApps: (repoPath: string) => BankingApp[];
   makeVideo: (input: Parameters<typeof makeVideo>[0]) => Promise<VideoResult>;
   /** Structure + symbol-name check of recording.yml; writes FastTab hints when clean. */
@@ -119,6 +122,7 @@ export const defaultPipelineDeps: PipelineDeps = {
   makeVideo: (input) => makeVideo(input),
   checkRecording: (itemDir, ptePath) => checkRecording(itemDir, loadSymbolIndex(symbolDirsFor(ptePath))),
   enforcePteIdentity: (ptePath) => enforcePteIdentity(ptePath),
+  enforcePteActivation: (ptePath) => enforcePteActivation(ptePath),
   readAppName: (ptePath) => {
     const app = JSON.parse(readFileSync(join(ptePath, 'app.json'), 'utf-8')) as { name?: unknown };
     if (typeof app.name !== 'string' || !app.name) throw new Error(`no name in ${ptePath}/app.json`);
@@ -267,6 +271,7 @@ export async function runPipeline(
   // localization mismatch should fail here, not after generate and validate.
   const enter = (stage: PipelineStage) => options.onStage?.(stage);
   const bankingApps = deps.discoverBankingApps(config.continiaBankingPath);
+  const countryDir = countryAppDir(bankingApps, config.envLocalization);
   if (!state.envId && !state.profileId) {
     enter('profile');
     try {
@@ -320,8 +325,10 @@ export async function runPipeline(
   try {
     const changes = deps.enforcePteIdentity(paths.ptePath);
     if (changes.length) log(`  PTE identity fixed: ${changes.join('; ')}`);
+    const activation = deps.enforcePteActivation(paths.ptePath);
+    if (activation.length) log(`  PTE activation added: ${activation.join('; ')}`);
   } catch (err) {
-    return failed(`PTE app.json unreadable: ${err instanceof Error ? err.message : String(err)}`);
+    return failed(`PTE check failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // B. Validate: blocking gate; the stage fixes and re-validates on its own.
@@ -355,8 +362,8 @@ export async function runPipeline(
     await deps.waitForRunning(cli, state.envId, config.envReadyTimeoutMinutes * 60_000);
 
     // D. Activate: Continia products need the activation app before any deploy.
+    if (!state.activated || (!state.countryAppInstalled && countryDir)) enter('activate');
     if (!state.activated) {
-      enter('activate');
       const install = await cli.installAppById(state.envId, ACTIVATION_APP_ID);
       if (!install.installed) {
         return failed(`activation app install failed (${install.reasonCode ?? 'no reason code'})`);
@@ -364,13 +371,25 @@ export async function runPipeline(
       state.activated = true;
       save();
     }
+
+    // Banking's activation requires its country app (Continia Banking - W1 for base), so the
+    // country app's dependencies and the app itself go on before the PTE, which activates.
+    if (!state.countryAppInstalled && countryDir) {
+      const country = bankingApps.find((app) => app.dir === countryDir);
+      if (!country?.id) return failed(`no app id in ${countryDir}/app.json`);
+      await cli.installDependencies(state.envId, countryDir, resolve(config.continiaBankingPath));
+      const install = await cli.installAppById(state.envId, country.id);
+      if (!install.installed) {
+        return failed(`country app "${country.name}" install failed (${install.reasonCode ?? 'no reason code'})`);
+      }
+      state.countryAppInstalled = true;
+      save();
+    }
   } catch (err) {
     return failed(`environment setup failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // E. Deploy: symbols, compile, publish, fix loop.
-  const countryDir = countryAppDir(bankingApps, config.envLocalization);
-  const countryApp = countryDir ? join(resolve(config.continiaBankingPath), countryDir) : undefined;
   if (!state.deployGaps) {
     enter('deploy');
     const deployPrompt = [
@@ -380,7 +399,7 @@ export async function runPipeline(
       `- Environment id: ${state.envId}`,
       '- It is running and activated.',
       `- Publish banking-demo first: ${state.generate.needsBankingDemo ? 'yes' : 'no'}`,
-      `- Country app for localization '${config.envLocalization}': ${countryApp ?? 'none found'}`,
+      `- Country app for localization '${config.envLocalization}': ${countryDir ?? 'none found'} (already installed)`,
     ].join('\n\n');
     const run = await runAgentStage(
       config,
@@ -400,22 +419,6 @@ export async function runPipeline(
 
   // F. Verify the PTE is installed, then collect credentials.
   enter('verify');
-  // Banking's activation requires its country app; without it the first Banking page asks to
-  // install it. Deploy has put the country app's dependencies on the env, so install it now.
-  if (!state.countryAppInstalled && countryDir) {
-    const country = bankingApps.find((app) => app.dir === countryDir);
-    if (!country?.id) return failed(`no app id in ${countryDir}/app.json`);
-    try {
-      const install = await cli.installAppById(state.envId, country.id);
-      if (!install.installed) {
-        return failed(`country app "${country.name}" install failed (${install.reasonCode ?? 'no reason code'})`);
-      }
-    } catch (err) {
-      return failed(`country app "${country.name}" install failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    state.countryAppInstalled = true;
-    save();
-  }
   try {
     const appName = deps.readAppName(paths.ptePath);
     const apps = await cli.listApps(state.envId);
