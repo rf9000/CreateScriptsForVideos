@@ -542,9 +542,7 @@ Expected: FAIL.
 
 and pass `popup` to `deps.recordDemo({...})`.
 
-`src/services/pipeline.ts`: the exploration plan builds the Exploration block with `[...].join('
-')`; turn that array into `const lines = [...]`, add the following before joining, then `explorationBlock = lines.join('
-')`:
+`src/services/pipeline.ts`: the exploration plan builds the Exploration block with `[...].join('\n')`; turn that array into `const lines = [...]`, add the following before joining, then `explorationBlock = lines.join('\n')`:
 
 ```ts
         const logins = Object.entries(config.bankSandboxCredentials);
