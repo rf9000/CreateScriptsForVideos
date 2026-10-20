@@ -13,6 +13,8 @@ import * as sdk from '../sdk/azure-devops-client.ts';
 import { runPipeline } from './pipeline.ts';
 import { htmlToText } from './html.ts';
 import { appendRun, capError, summarizeError } from './cost-ledger.ts';
+import { jobBoard } from './jobs.ts';
+import type { JobPhase } from './jobs.ts';
 import type { RunRecord } from './cost-ledger.ts';
 
 export interface ProcessorDeps {
@@ -42,6 +44,8 @@ export interface ProcessorDeps {
   fileSize: (path: string) => number;
   /** Append a finished run to the dashboard's ledger. */
   recordRun: (config: AppConfig, run: RunRecord) => void;
+  /** Show the item's current stage on the dashboard; a null phase takes it off. */
+  trackJob: (config: AppConfig, item: { itemId: number; title: string; mode: ItemMode }, phase: JobPhase | null) => void;
 }
 
 export const defaultProcessorDeps: ProcessorDeps = {
@@ -56,6 +60,11 @@ export const defaultProcessorDeps: ProcessorDeps = {
   readVideo: (path) => new Uint8Array(readFileSync(path)),
   fileSize: (path) => statSync(path).size,
   recordRun: (config, run) => appendRun(config.costLogPath, run),
+  trackJob: (config, item, phase) => {
+    const board = jobBoard(config.jobsPath);
+    if (phase) board.enter(item.itemId, item.title, item.mode, phase);
+    else board.finish(item.itemId);
+  },
 };
 
 function log(message: string): void {
@@ -179,6 +188,8 @@ interface RunTrack {
    */
   attempted: boolean;
   result?: ScriptResult;
+  /** Moves the item's stage chip on the dashboard. */
+  enter: (phase: JobPhase) => void;
 }
 
 export async function processItem(
@@ -189,8 +200,18 @@ export async function processItem(
 ): Promise<ItemProcessResult> {
   const title = String(item.fields['System.Title'] ?? '(untitled)');
   const mode = options.mode ?? sdk.itemMode(config, item) ?? 'script';
-  const track: RunTrack = { attempted: false };
-  const outcome = await runItem(config, item, deps, options, title, mode, track);
+  // Dry runs write nothing, so they show no stages either.
+  const job = { itemId: item.id, title, mode };
+  const enter = (phase: JobPhase) => {
+    if (!config.dryRun) deps.trackJob(config, job, phase);
+  };
+  const track: RunTrack = { attempted: false, enter };
+  let outcome: ItemProcessResult;
+  try {
+    outcome = await runItem(config, item, deps, options, title, mode, track);
+  } finally {
+    if (track.attempted && !config.dryRun) deps.trackJob(config, job, null);
+  }
   // Dry runs post nothing, so they record nothing.
   if (track.attempted && !config.dryRun) safeRecordRun(deps, config, item.id, title, mode, track, outcome);
   return outcome;
@@ -256,7 +277,11 @@ async function runItem(
 
     log(`  Item #${item.id}: Running pipeline...`);
     track.attempted = true;
-    result = await deps.runPipeline(config, context, { ...options, ...(mode === 'video' ? { mode } : {}) });
+    result = await deps.runPipeline(config, context, {
+      ...options,
+      ...(mode === 'video' ? { mode } : {}),
+      onStage: track.enter,
+    });
     track.result = result;
     const costUsd = result.costUsd;
     log(`  Item #${item.id}: Agent cost $${(costUsd ?? 0).toFixed(4)}`);
@@ -278,6 +303,7 @@ async function runItem(
       return { itemId: item.id, processed: false, error: msg, costUsd };
     }
 
+    track.enter('deliver');
     const fileName = `recording-script-${item.id}.md`;
     const content = deps.readScript(result.scriptPath);
     const attachment = await deps.uploadAttachment(config, fileName, content);

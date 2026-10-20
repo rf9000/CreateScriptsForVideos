@@ -20,6 +20,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     workspaceOutputDir: '/out', pteOutputDir: '/out', lspPluginPath: '',
     outputRetentionDays: 14,
     costLogPath: '.state/cost-ledger.jsonl',
+    jobsPath: '.state/jobs.json',
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',

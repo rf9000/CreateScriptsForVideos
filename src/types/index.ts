@@ -42,6 +42,8 @@ export interface AppConfig {
   outputRetentionDays: number;
   /** Run ledger (JSONL): one line per finished run, read by the dashboard for its history. */
   costLogPath: string;
+  /** Items in flight and their current stage (JSON), read by the dashboard for its stage chips. */
+  jobsPath: string;
   /** Max work items processed in parallel per poll cycle. 1 = sequential (default). */
   watchConcurrency: number;
   /** Settings for each LLM stage of the pipeline. */

@@ -361,3 +361,19 @@ describe('runPipeline', () => {
     expect(deps.clearState).not.toHaveBeenCalled();
   });
 });
+
+describe('runPipeline — stage events for the dashboard', () => {
+  test('reports each step as it starts, in run order', async () => {
+    const { deps } = makeDeps();
+    const seen: string[] = [];
+    await runPipeline(testConfig(), context, { onStage: (s) => seen.push(s) }, deps);
+    expect(seen).toEqual(['profile', 'generate', 'validate', 'provision', 'activate', 'deploy', 'verify']);
+  });
+
+  test('a video item also reports recording and video', async () => {
+    const { deps } = makeDeps();
+    const seen: string[] = [];
+    await runPipeline(testConfig(), context, { mode: 'video', onStage: (s) => seen.push(s) }, deps);
+    expect(seen.slice(-3)).toEqual(['verify', 'recording', 'video']);
+  });
+});

@@ -133,6 +133,7 @@ export function loadConfig(
     lspPluginPath: parsed.LSP_PLUGIN_PATH,
     outputRetentionDays: parsed.OUTPUT_RETENTION_DAYS,
     costLogPath: parsed.COST_LOG_PATH ?? join(parsed.STATE_DIR, "cost-ledger.jsonl"),
+    jobsPath: join(parsed.STATE_DIR, "jobs.json"),
     watchConcurrency: parsed.WATCH_CONCURRENCY,
     stages: {
       generate: stage("generate"),

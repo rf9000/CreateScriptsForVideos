@@ -28,6 +28,7 @@ function config(dir: string, retentionDays: number): AppConfig {
     workspaceOutputDir: dir, pteOutputDir: dir, lspPluginPath: '',
     outputRetentionDays: retentionDays,
     costLogPath: '.state/cost-ledger.jsonl',
+    jobsPath: '.state/jobs.json',
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',

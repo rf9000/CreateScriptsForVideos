@@ -150,7 +150,10 @@ same way here.
   title, outcome, mode, per-stage usage, `runCostUsd` and `costUsd` (the item's spend so far,
   across retags). A failed run also gets `reason` (first line) and `error` (full message, capped
   at 8000 characters). Dry runs (`test-item`) record nothing. The dashboard reads this file for
-  the processed list and the full history; mount the `create-scripts-state` volume into it.
+  the processed list and the full history. `/app/.state/jobs.json` holds the items in flight and
+  the step each is on (profile, generate, validate, provision, activate, deploy, verify, recording,
+  video, deliver), for the dashboard's stage chips. The monitor reads both files from inside the
+  container through docker-socket-proxy, so no volume needs mounting into it.
 - **Resuming a failed item:** each item's output folder holds `pipeline-state.json` (no
   credentials). Run `docker compose exec create-scripts-for-videos bun src/cli/index.ts test-item
   <id> --resume` to continue from the last good step, e.g. reuse the generated PTE and the

@@ -25,6 +25,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     lspPluginPath: '',
     outputRetentionDays: 14,
     costLogPath: '.state/cost-ledger.jsonl',
+    jobsPath: '.state/jobs.json',
     watchConcurrency: 1,
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',
@@ -82,6 +83,7 @@ function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
     readVideo: mock(() => new Uint8Array([1, 2])),
     fileSize: mock(() => 1000),
     recordRun: mock(() => {}),
+    trackJob: mock(() => {}),
     ...overrides,
   };
 }
@@ -412,7 +414,7 @@ describe('processItem — failures around the pipeline', () => {
     const deps = makeDeps();
     await processItem(mockConfig(), mockWorkItem(), deps, { resume: true });
     const call = (deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]!;
-    expect(call[2]).toEqual({ resume: true });
+    expect(call[2]).toMatchObject({ resume: true });
   });
 });
 
@@ -425,7 +427,7 @@ describe('processItem — video items', () => {
       runPipeline: mock(async () => ({ ...successResult, video: { ok: true, path: '/out/42/demo.mp4' } })),
     });
     await processItem(mockConfig(), videoItem(), deps);
-    expect((deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]![2]).toEqual({ mode: 'video' });
+    expect((deps.runPipeline as ReturnType<typeof mock>).mock.calls[0]![2]).toMatchObject({ mode: 'video' });
     const uploads = (deps.uploadAttachment as ReturnType<typeof mock>).mock.calls.map((c) => c[1]);
     expect(uploads).toEqual(['recording-script-42.md', 'demo-video-42.mp4']);
     const html = String((deps.addComment as ReturnType<typeof mock>).mock.calls[0]![2]);
@@ -551,5 +553,35 @@ describe('processItem — run ledger', () => {
     });
     await processItem(mockConfig(), mockWorkItem(), deps, { mode: 'video' });
     expect(recorded(deps)[0]).toMatchObject({ outcome: 'completed', mode: 'video', reason: 'video not attached: replay timed out' });
+  });
+});
+
+describe('processItem — dashboard stages', () => {
+  const phases = (deps: ProcessorDeps) =>
+    (deps.trackJob as ReturnType<typeof mock>).mock.calls.map((c) => c[2] as string | null);
+
+  test('passes pipeline stages on, then deliver, then takes the item off', async () => {
+    const deps = makeDeps({
+      runPipeline: mock(async (_c: AppConfig, _ctx: unknown, options: { onStage?: (s: string) => void }) => {
+        options.onStage?.('generate');
+        options.onStage?.('deploy');
+        return successResult;
+      }) as unknown as ProcessorDeps['runPipeline'],
+    });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(phases(deps)).toEqual(['generate', 'deploy', 'deliver', null]);
+    expect((deps.trackJob as ReturnType<typeof mock>).mock.calls[0]![1]).toEqual({ itemId: 42, title: 'Demo merge rules', mode: 'script' });
+  });
+
+  test('takes a failed item off too', async () => {
+    const deps = makeDeps({ runPipeline: mock(async (): Promise<ScriptResult> => ({ status: 'failed', errorMessage: 'x' })) });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(phases(deps)).toEqual([null]);
+  });
+
+  test('dry runs show nothing', async () => {
+    const deps = makeDeps();
+    await processItem(mockConfig({ dryRun: true }), mockWorkItem(), deps);
+    expect(deps.trackJob).not.toHaveBeenCalled();
   });
 });

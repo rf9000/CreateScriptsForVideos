@@ -204,7 +204,15 @@ export interface PipelineOptions {
   resume?: boolean;
   /** 'video' also records a demo video. Default 'script'. */
   mode?: ItemMode;
+  /** Called as each step starts, for the dashboard's stage chips. */
+  onStage?: (stage: PipelineStage) => void;
 }
+
+/** The pipeline's steps in run order; recording and video run only for video items. */
+export const PIPELINE_STAGES = [
+  'profile', 'generate', 'validate', 'provision', 'activate', 'deploy', 'verify', 'recording', 'video',
+] as const;
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
 
 export async function runPipeline(
   config: AppConfig,
@@ -253,8 +261,10 @@ export async function runPipeline(
 
   // Resolve the profile before any agent spends money: a version or
   // localization mismatch should fail here, not after generate and validate.
+  const enter = (stage: PipelineStage) => options.onStage?.(stage);
   const bankingApps = deps.discoverBankingApps(config.continiaBankingPath);
   if (!state.envId && !state.profileId) {
+    enter('profile');
     try {
       if (config.envProfileId) {
         state.profileId = config.envProfileId;
@@ -280,6 +290,7 @@ export async function runPipeline(
 
   // A. Generate: research, PTE, recording script.
   if (!state.generate) {
+    enter('generate');
     const run = await runAgentStage(
       config,
       'generate',
@@ -301,6 +312,7 @@ export async function runPipeline(
 
   // B. Validate: blocking gate; the stage fixes and re-validates on its own.
   if (state.validate?.status !== 'passed') {
+    enter('validate');
     const run = await runAgentStage(
       config,
       'validate',
@@ -319,6 +331,7 @@ export async function runPipeline(
 
   try {
     // C. Provision a fresh environment and wait for it.
+    enter('provision');
     if (!state.envId) {
       if (!state.profileId) return failed('no profile resolved for provisioning');
       log(`  Provisioning environment from profile ${state.profileId}...`);
@@ -329,6 +342,7 @@ export async function runPipeline(
 
     // D. Activate: Continia products need the activation app before any deploy.
     if (!state.activated) {
+      enter('activate');
       const install = await cli.installAppById(state.envId, ACTIVATION_APP_ID);
       if (!install.installed) {
         return failed(`activation app install failed (${install.reasonCode ?? 'no reason code'})`);
@@ -344,6 +358,7 @@ export async function runPipeline(
   const countryDir = countryAppDir(bankingApps, config.envLocalization);
   const countryApp = countryDir ? join(resolve(config.continiaBankingPath), countryDir) : undefined;
   if (!state.deployGaps) {
+    enter('deploy');
     const deployPrompt = [
       brief,
       where,
@@ -370,6 +385,7 @@ export async function runPipeline(
   }
 
   // F. Verify the PTE is installed, then collect credentials.
+  enter('verify');
   try {
     const appName = deps.readAppName(paths.ptePath);
     const apps = await cli.listApps(state.envId);
@@ -386,6 +402,7 @@ export async function runPipeline(
 
     // G. Recording: written after deploy, when the PTE's symbols (Microsoft's included) are on disk.
     if (!state.recordingChecked) {
+      enter('recording');
       const recordingPrompt = [
         brief,
         where,
@@ -406,6 +423,7 @@ export async function runPipeline(
     const reused = state.videoAttempted === true;
     state.videoAttempted = true;
     save();
+    enter('video');
     log('  Recording demo video...');
     const video = await deps.makeVideo({
       itemDir: join(paths.scriptPath, '..'),
