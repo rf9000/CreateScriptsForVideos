@@ -71,19 +71,26 @@ export function errorText(e: unknown): string | undefined {
   return JSON.stringify(e);
 }
 
-/** First-run dialogs on a fresh Continia demo environment, closed before the demo starts. */
-const STARTUP_DIALOGS = ['Welcome to your Continia Demo Environment'];
+/**
+ * First-run dialogs on a fresh Continia demo environment, answered before the demo starts.
+ * The external-services question comes from Continia apps on a sandbox, where outbound HTTP is
+ * off by default; Yes stores the setting for the tenant, so it is asked only once.
+ */
+const STARTUP_DIALOGS = [
+  { text: 'Welcome to your Continia Demo Environment', button: 'Close' },
+  { text: 'allow Continia Software extensions to communicate with external services', button: 'Yes' },
+];
 
 export async function dismissStartupDialogs(page: Page): Promise<string[]> {
   const closed: string[] = [];
   for (let i = 0; i < 5; i++) {
     const frame = await awaitFrame(page);
     let hit = false;
-    for (const title of STARTUP_DIALOGS) {
-      const dialog = frame.locator('[role=dialog]:visible', { hasText: title }).last();
+    for (const { text, button } of STARTUP_DIALOGS) {
+      const dialog = frame.locator('[role=dialog]:visible', { hasText: text }).last();
       if ((await dialog.count()) === 0) continue;
-      await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
-      closed.push(title);
+      await dialog.getByRole('button', { name: button, exact: true }).last().click();
+      closed.push(text);
       hit = true;
     }
     if (!hit) break;
@@ -118,8 +125,17 @@ export async function openSession(
   }
   await awaitFrame(authPage);
   await dismissStartupDialogs(authPage);
-  const cookies = await auth.cookies();
   const landed = authPage.url();
+  // The login redirect drops the query, so the deep link goes back onto where it landed. Open
+  // it once off camera too: questions the start page asks first (the Continia external-services
+  // one) are answered here and stay answered, so the video starts on the page itself.
+  const deepLink = startUrl(landed, opts.profile, opts.pageId);
+  if (opts.pageId !== undefined) {
+    await authPage.goto(deepLink);
+    await awaitFrame(authPage);
+    await dismissStartupDialogs(authPage);
+  }
+  const cookies = await auth.cookies();
   await auth.close();
 
   const context = await browser.newContext({ viewport: VIEWPORT, recordVideo: { dir: opts.videoDir, size: VIEWPORT } });
@@ -127,8 +143,7 @@ export async function openSession(
   const page = await context.newPage();
   // The video starts with the page; the loading screen before the first step is trimmed later.
   const videoStartedAt = Date.now();
-  // The login redirect drops the query, so the deep link goes back onto where it landed.
-  await page.goto(startUrl(landed, opts.profile, opts.pageId));
+  await page.goto(deepLink);
   await awaitFrame(page);
   await dismissStartupDialogs(page);
   return { context, page, videoStartedAt };
