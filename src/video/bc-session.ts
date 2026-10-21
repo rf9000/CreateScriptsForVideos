@@ -73,22 +73,28 @@ export function errorText(e: unknown): string | undefined {
 
 /**
  * First-run dialogs on a fresh Continia demo environment, answered before the demo starts.
- * The external-services question comes from Continia apps on a sandbox, where outbound HTTP is
- * off by default; Yes stores the setting for the tenant, so it is asked only once.
+ * Sandboxes block outbound HTTP by default: Continia's own question (Yes) and BC's per-extension
+ * prompt (Allow Always, then OK) both store the answer, so each is asked once per extension.
  */
-const STARTUP_DIALOGS = [
+const STARTUP_DIALOGS: Array<{ text: RegExp; button: string; choose?: string }> = [
   { text: /Welcome to your Continia Demo Environment/i, button: 'Close' },
   { text: /communicate with external services/i, button: 'Yes' },
+  { text: /is making a request to an external service/i, choose: 'Allow Always', button: 'OK' },
 ];
 
 /**
  * The dialog's text and button in whichever frame shows them. BC's confirm dialogs don't all
  * carry role=dialog, and some render outside the client iframe, so match on visible text.
  */
-async function answerDialog(page: Page, text: RegExp, button: string): Promise<boolean> {
+async function answerDialog(page: Page, text: RegExp, button: string, choose?: string): Promise<boolean> {
   for (const frame of page.frames()) {
     const shown = await frame.getByText(text).first().isVisible().catch(() => false);
     if (!shown) continue;
+    if (choose) {
+      const option = frame.getByRole('radio', { name: choose, exact: true }).last();
+      const target = (await option.isVisible().catch(() => false)) ? option : frame.getByText(choose, { exact: true }).last();
+      await target.click();
+    }
     const target = frame.getByRole('button', { name: button, exact: true }).last();
     if (!(await target.isVisible().catch(() => false))) continue;
     await target.click();
@@ -107,8 +113,8 @@ export async function dismissStartupDialogs(page: Page, settleMs = 0): Promise<s
   for (let i = 0; i < 40; i++) {
     await awaitFrame(page);
     let hit = false;
-    for (const { text, button } of STARTUP_DIALOGS) {
-      if (!(await answerDialog(page, text, button))) continue;
+    for (const { text, button, choose } of STARTUP_DIALOGS) {
+      if (!(await answerDialog(page, text, button, choose))) continue;
       closed.push(text.source);
       hit = true;
     }
