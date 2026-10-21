@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { strToU8, zipSync } from 'fflate';
 import {
-  buildIndex, describePage, fieldGroupsFor, lintRecordingNames, loadSymbolIndex, readSymbolReference,
+  buildIndex, describePage, editableWhen, fieldGroupsFor, lintRecordingNames, loadSymbolIndex, readSymbolReference,
 } from '../../src/video/symbols.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
@@ -207,4 +207,67 @@ describe('page parts', () => {
     expect(describePage(index, 'CTS-CB MultiBankAccAssistSetup')).toContain(
       'part SetupBankAccountList  -> CTS-CB SetupMultiBankAccList (target it as {part: SetupBankAccountList}, not as a page)');
   });
+});
+
+// Shape of Continia Banking Import's split rule card with its lines part.
+const splitApp = {
+  EnumTypes: [{ Name: 'CTS-PI Split By Type', Values: [
+    { Name: 'Charges' }, { Name: 'Interest' }, { Name: 'Search Text' }, { Name: 'Fixed Amount' }, { Name: 'Percentage' },
+  ] }],
+  Pages: [
+    {
+      Id: 71554192, Name: 'CTS-PI Split Rule',
+      Controls: [field('Code'), { Kind: 6, Name: 'SplitRuleLinesSub', RelatedPagePartId: { Name: '', Id: 71554193 } }],
+      Actions: [],
+    },
+    {
+      Id: 71554193, Name: 'CTS-PI Split Rule Lines Sub.',
+      Controls: [{ Kind: 3, Name: 'General', Controls: [
+        { Kind: 8, Name: 'Split By', TypeDefinition: { Name: 'Enum', Subtype: { Name: 'CTS-PI Split By Type' } } },
+        { Kind: 8, Name: 'Amount', TypeDefinition: { Name: 'Decimal' }, Properties: [{ Name: 'Editable', Value: 'Rec."Split By" = Rec."Split By"::"Fixed Amount"' }] },
+        { Kind: 8, Name: 'Percentage', TypeDefinition: { Name: 'Decimal' }, Properties: [{ Name: 'Editable', Value: 'Rec."Split By" = Rec."Split By"::Percentage' }] },
+      ] }],
+      Actions: [],
+    },
+  ],
+};
+
+describe('option values and Editable rules', () => {
+  const index = buildIndex([splitApp]);
+  const line = (fieldName: string, value: unknown) => ({
+    type: 'input',
+    target: [{ page: 'CTS-PI Split Rule' }, { part: 'SplitRuleLinesSub' }, { page: 'CTS-PI Split Rule Lines Sub.' }, { repeater: 'General' }, { field: fieldName }],
+    value,
+  });
+
+  test('editableWhen reads the common Editable expression', () => {
+    expect(editableWhen('Rec."Split By" = Rec."Split By"::"Fixed Amount"')).toEqual({ field: 'Split By', value: 'Fixed Amount' });
+    expect(editableWhen('Rec."Split By" = Rec."Split By"::Percentage')).toEqual({ field: 'Split By', value: 'Percentage' });
+    expect(editableWhen('IsEditable')).toBeUndefined();
+  });
+
+  test('a number in an enum field is rejected, with the captions to use', () => {
+    expect(lintRecordingNames(rec([line('Split By', 3)]), index)).toEqual([
+      'step 0: "Split By" is an enum field; give the caption shown in its dropdown, not 3 (values: Charges, Interest, Search Text, Fixed Amount, Percentage)',
+    ]);
+  });
+
+  test('captions in the right order pass', () => {
+    expect(lintRecordingNames(rec([
+      line('Split By', 'Fixed Amount'), line('Amount', 50),
+      line('Split By', 'Percentage'), line('Percentage', 25),
+    ]), index)).toEqual([]);
+  });
+
+  test('a field typed while its Editable rule is not met is rejected', () => {
+    expect(lintRecordingNames(rec([line('Split By', 'Percentage'), line('Amount', 50)]), index)).toEqual([
+      'step 1: "Amount" is editable only when "Split By" is "Fixed Amount", but an earlier step set "Split By" to "Percentage"',
+    ]);
+  });
+});
+
+test('describePage shows enum captions and Editable rules to the agent', () => {
+  const text = describePage(buildIndex([splitApp]), 'CTS-PI Split Rule Lines Sub.');
+  expect(text).toContain('field Split By  [values, give the caption: Charges | Interest | Search Text | Fixed Amount | Percentage]');
+  expect(text).toContain('field Amount  [editable when: Rec."Split By" = Rec."Split By"::"Fixed Amount"]');
 });

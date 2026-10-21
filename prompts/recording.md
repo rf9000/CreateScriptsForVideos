@@ -58,8 +58,8 @@ steps:
       - page: CTS-CB SetupMultiBankAccList
       - repeater: BankAccountList
       - field: CommunicationType
-    value: 2                            # option/enum fields take the ordinal, not the caption
-    description: Input <value>2</value> into <caption>Communication Type</caption>
+    value: Direct                       # option/enum fields take the caption, never a number
+    description: Input <value>Direct</value> into <caption>Communication Type</caption>
   - type: invoke                        # a lookup: open it, the list shows, OK picks the current row
     target:
       - page: CTS-CB MultiBankAccAssistSetup
@@ -122,8 +122,11 @@ Rules:
 - Pick a list row with `set-current-row` before acting on it. `relative` counts rows from the row
   that is current when the list opens; work it out from the order the PTE seeds the records in,
   and say in `notes` which row you meant.
-- Option and enum fields take the value's ordinal (0, 1, 2, ...), as BC's recorder writes it. Find
-  it in the AL enum or option declaration in continia-banking.
+- Option and enum fields take the caption shown in their dropdown (e.g. `Fixed Amount`), never a
+  number: BC's engine reads a number as a position in the dropdown, which is often not the enum
+  ordinal. The symbols tool lists each enum field's captions.
+- Mind fields that are editable only for certain values (the symbols tool shows `[editable when:
+  ...]`): set the controlling field first, in the same row, then the dependent one.
 - When the flow leaves Business Central (an action opens a pop-up on another site, such as a
   bank's login), end the recording with the action that opens it. Nothing after it can be
   replayed. Narrate that step with what happens next, and say in `notes` where it stops. Such a

@@ -15,14 +15,18 @@ export type PageSymbols = {
   id: number;
   name: string;
   /** Field control name -> caption (when the page sets one) and its FastTab. */
-  fields: Map<string, { caption?: string; group?: string }>;
+  fields: Map<string, FieldSymbol>;
   actions: Map<string, { caption?: string }>;
   repeaters: Set<string>;
   /** Part control name -> the id of the page it shows (e.g. a wizard's list part). */
   parts: Map<string, number>;
 };
 
-export type SymbolIndex = { pages: Map<string, PageSymbols> };
+/** A field control: caption, FastTab, data type (Enum/Option/...), and its Editable expression if any. */
+export type FieldSymbol = { caption?: string; group?: string; type?: string; enumName?: string; editable?: string };
+
+/** Enum name (lower case) -> its values, for suggesting captions. */
+export type SymbolIndex = { pages: Map<string, PageSymbols>; enums: Map<string, Array<{ name: string; caption?: string }>> };
 
 /** Actions BC generates itself; they are not declared in AL, so symbols don't list them. */
 export const BUILT_IN_ACTIONS = new Set(['Control_New', 'Control_Edit', 'Control_Delete', 'Control_View', 'Control_Refresh']);
@@ -62,7 +66,14 @@ function collect(ns: Json, key: string, out: Json[]): void {
 
 function addControls(page: PageSymbols, controls: Json[] | undefined, group?: string): void {
   for (const c of controls ?? []) {
-    if (c['Kind'] === KIND_FIELD) page.fields.set(c['Name'], { caption: captionOf(c), group });
+    if (c['Kind'] === KIND_FIELD) {
+      const editable = (c['Properties'] as Json[] | undefined)?.find((p) => p['Name'] === 'Editable')?.['Value'];
+      page.fields.set(c['Name'], {
+        caption: captionOf(c), group,
+        type: c['TypeDefinition']?.['Name'], enumName: c['TypeDefinition']?.['Subtype']?.['Name'],
+        ...(typeof editable === 'string' ? { editable } : {}),
+      });
+    }
     if (c['Kind'] === KIND_REPEATER) page.repeaters.add(c['Name']);
     if (c['Kind'] === KIND_PART && typeof c['RelatedPagePartId']?.['Id'] === 'number') page.parts.set(c['Name'], c['RelatedPagePartId']['Id']);
     // The first group below the page root is the FastTab.
@@ -81,8 +92,14 @@ function addActions(page: PageSymbols, actions: Json[] | undefined): void {
 /** Index pages from SymbolReference objects; page extensions are merged into their target pages. */
 export function buildIndex(refs: unknown[]): SymbolIndex {
   const pages = new Map<string, PageSymbols>();
+  const enums: SymbolIndex['enums'] = new Map();
   const extensions: Json[] = [];
   for (const ref of refs as Json[]) {
+    const enumTypes: Json[] = [];
+    collect(ref, 'EnumTypes', enumTypes);
+    for (const e of enumTypes) {
+      enums.set(String(e['Name']).toLowerCase(), ((e['Values'] as Json[] | undefined) ?? []).map((v) => ({ name: v['Name'], caption: captionOf(v) })));
+    }
     const found: Json[] = [];
     collect(ref, 'Pages', found);
     for (const p of found) {
@@ -105,7 +122,7 @@ export function buildIndex(refs: unknown[]): SymbolIndex {
     }
     for (const change of (ext['ActionChanges'] as Json[] | undefined) ?? []) addActions(page, change['Actions']);
   }
-  return { pages };
+  return { pages, enums };
 }
 
 /** Index every .app in the given folders (missing folders are skipped). */
@@ -157,6 +174,14 @@ function suggest(wanted: string, candidates: Array<{ name: string; caption?: str
 
 const hint = (s?: string) => (s ? ` (did you mean "${s}"?)` : '');
 
+/** `Rec."Split By" = Rec."Split By"::"Fixed Amount"` -> { field: 'Split By', value: 'Fixed Amount' }. */
+export function editableWhen(expr: string): { field: string; value: string } | undefined {
+  const m = /^\s*Rec\.(?:"([^"]+)"|(\w+))\s*=\s*Rec\.(?:"[^"]+"|\w+)::(?:"([^"]+)"|(\w+))\s*$/.exec(expr);
+  return m ? { field: (m[1] ?? m[2])!, value: (m[3] ?? m[4])! } : undefined;
+}
+
+const isNumberValue = (v: unknown) => typeof v === 'number' || (typeof v === 'string' && /^\d+$/.test(v.trim()));
+
 const pageById = (index: SymbolIndex, id: number) => [...index.pages.values()].find((p) => p.id === id);
 
 /** A page whose part shows `page`, among the pages the recording uses. */
@@ -177,6 +202,8 @@ export function lintRecordingNames(rec: Recording, index: SymbolIndex): string[]
     const name = (step.source?.page ?? step.target?.find((t) => t['page'])?.['page']) as string | undefined;
     if (name) used.add(name.toLowerCase());
   }
+  // Values the recording has typed so far, per page (the part's page for lines), for Editable rules.
+  const typed = new Map<string, Map<string, string>>();
   rec.steps.forEach((step, i) => {
     if (step.type === 'page-shown') {
       const name = step.source?.page;
@@ -230,6 +257,27 @@ export function lintRecordingNames(rec: Recording, index: SymbolIndex): string[]
         const cands = [...page.fields].map(([name, f]) => ({ name, caption: f.caption }));
         problems.push(`step ${i}: field "${field}" is not on page "${page.name}"${hint(suggest(field, cands))}`);
       }
+      const symbol = field && t['scope'] !== 'filter' ? page.fields.get(field) : undefined;
+      if (symbol && (step.type === 'input' || step.type === 'validate')) {
+        // BC's engine reads a number in an option/enum field as a position in the dropdown, not the
+        // ordinal, so a number lands on the wrong value. The caption always works.
+        if ((symbol.type === 'Enum' || symbol.type === 'Option') && isNumberValue(step.value)) {
+          const values = symbol.enumName ? index.enums.get(symbol.enumName.toLowerCase()) : undefined;
+          const list = values?.map((v) => v.caption ?? v.name).filter(Boolean).join(', ');
+          problems.push(`step ${i}: "${field}" is an ${symbol.type.toLowerCase()} field; give the caption shown in its dropdown, not ${step.value}${list ? ` (values: ${list})` : ''}`);
+        }
+        const rule = step.type === 'input' && symbol.editable ? editableWhen(symbol.editable) : undefined;
+        const set = typed.get(page.name.toLowerCase())?.get(rule?.field ?? '');
+        if (rule && set !== undefined && set.toLowerCase() !== rule.value.toLowerCase()) {
+          problems.push(`step ${i}: "${field}" is editable only when "${rule.field}" is "${rule.value}", but an earlier step set "${rule.field}" to "${set}"`);
+        }
+        if (step.type === 'input') {
+          if (!typed.has(page.name.toLowerCase())) typed.set(page.name.toLowerCase(), new Map());
+          typed.get(page.name.toLowerCase())!.set(field!, String(step.value));
+        }
+      }
+      // Another row: what was typed on the previous one no longer applies.
+      if (step.type === 'set-current-row') typed.delete(page.name.toLowerCase());
       if (action && !page.actions.has(action) && !BUILT_IN_ACTIONS.has(action)) {
         const cands = [...page.actions].map(([name, a]) => ({ name, caption: a.caption }));
         problems.push(`step ${i}: action "${action}" is not on page "${page.name}"${hint(suggest(action, cands))}`);
@@ -273,7 +321,14 @@ export function describePage(index: SymbolIndex, name: string): string {
   const lines = [`${page.name} (page ${page.id})`];
   for (const [p, id] of page.parts) lines.push(`part ${p}  -> ${pageById(index, id)?.name ?? `page ${id}`} (target it as {part: ${p}}, not as a page)`);
   for (const r of page.repeaters) lines.push(`repeater ${r}`);
-  for (const [n, f] of page.fields) lines.push(`field ${n}${q(f.caption)}${f.group ? `  [FastTab: ${f.group}]` : ''}`);
+  for (const [n, f] of page.fields) {
+    const values = f.enumName ? index.enums.get(f.enumName.toLowerCase())?.map((v) => v.caption ?? v.name).join(' | ') : undefined;
+    lines.push(
+      `field ${n}${q(f.caption)}${f.group ? `  [FastTab: ${f.group}]` : ''}` +
+        `${values ? `  [values, give the caption: ${values}]` : f.type === 'Option' ? '  [option: give the caption]' : ''}` +
+        `${f.editable ? `  [editable when: ${f.editable}]` : ''}`,
+    );
+  }
   for (const [n, a] of page.actions) lines.push(`action ${n}${q(a.caption)}`);
   lines.push(`built-in actions: ${[...BUILT_IN_ACTIONS].join(', ')}`);
   return lines.join('\n');
