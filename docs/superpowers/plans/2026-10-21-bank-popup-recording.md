@@ -4,7 +4,7 @@
 
 **Goal:** Record the bank's own onboarding pop-up (e.g. BANKSapi - PSD2) inside the demo video, using a bank sandbox login, so a direct-communication demo runs to "Status Ready" instead of stopping at "Connect Bank Account".
 
-**Architecture:** BC's replay engine only drives BC pages, so the pop-up gets its own small script, `popup.yml`: the BC step whose click opens it, then role/name-based Playwright actions with `{{user}}`-style placeholders. The recording agent writes it after exploring the pop-up with the sandbox login (the browser from the exploration plan). The recorder waits for the pop-up when that BC step runs, plays `popup.yml` on it with the same visible cursor and typing, and keeps the pop-up's own video and timing. Composition overlays the pop-up video on the main video for its time span. Sandbox logins live in one config secret keyed by bank system name.
+**Architecture:** BC's replay engine only drives BC pages, so the pop-up gets its own small script, `popup.yml`: the BC step whose click opens it, then role/name-based Playwright actions with `{{user}}`-style placeholders. The recording agent writes it after exploring the pop-up with the sandbox login in a headless Playwright MCP browser (Task 0); the exploration plan's bc_* tools drive BC's protocol and can't render a bank's web page. The recorder waits for the pop-up when that BC step runs, plays `popup.yml` on it with the same visible cursor and typing, and keeps the pop-up's own video and timing. Composition overlays the pop-up video on the main video for its time span. Sandbox logins live in one config secret keyed by bank system name.
 
 **Tech Stack:** Bun + TypeScript, Playwright 1.55.1 (`context.waitForEvent('page')`, per-page `recordVideo`), FFmpeg (`overlay` with `enable`), Zod.
 
@@ -14,7 +14,7 @@
 
 Start only when all three hold:
 1. A `create video` run of item 84919 produced a video ending on the **Connect Bank Account** click.
-2. `docs/superpowers/plans/2026-10-21-recording-exploration.md` is implemented (the agent needs the browser to explore the pop-up).
+2. `docs/superpowers/plans/2026-10-21-recording-exploration.md` is implemented (the agent walks the BC part of the flow with it).
 3. A sandbox login exists for the bank system (e.g. a BANKSapi test bank user) and is stored in the VM's `.env.create-scripts`.
 
 ## Global Constraints
@@ -45,6 +45,35 @@ Start only when all three hold:
 - Modify `src/video/make-video.ts`: load `popup.yml`, resolve placeholders, pass them on.
 - Modify `src/services/pipeline.ts`, `prompts/recording.md`: tell the agent which sandbox logins exist and how to write `popup.yml`.
 - Tests: `tests/config/config.test.ts`, `tests/video/popup.test.ts` (new), `tests/video/recorder.test.ts`, `tests/video/compose.test.ts`, `tests/services/pipeline.test.ts`.
+
+---
+
+### Task 0: A browser for the pop-up
+
+The bc_* tools reach the Connect Bank Account action, but the pop-up is a bank web page that only a
+browser can show. Settle how the agent gets there before Tasks 1-5.
+
+**Files:**
+- Create: `docs/bank-popup-spike.md`
+- Modify: `package.json` (only if Step 2 picks Playwright MCP)
+
+- [ ] **Step 1: See what BC hands out on the Connect action**
+
+On an item environment at the Connect to BANKSapi page, run the Connect action with `bc_execute_action` (from a Claude Code session with the `business-central` MCP, as on the developer PC) and record what the tool returns: a URL to open, a "hyperlink" event, or nothing.
+
+- [ ] **Step 2: Pick the browser route and record it**
+
+- If Step 1 returns the pop-up URL: the agent opens that URL in a headless Playwright MCP (`@playwright/mcp`, pinned exact version, `--headless --isolated --executable-path <chromium.executablePath()>`), on the image's Chromium. Add it to the recording stage's `mcpServers` next to `business-central`, only when a sandbox login exists for the item's bank system.
+- If it returns nothing usable: the agent drives the BC part up to Connect in the Playwright browser too (sign in with the saved state from `signIn`), clicks Connect there, and explores the pop-up in that browser.
+
+Write the choice, the evidence and the exact MCP config in `docs/bank-popup-spike.md`. Tasks 3 and 5 rely on it.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/bank-popup-spike.md package.json bun.lock
+git commit -m "docs: how the recording agent reaches the bank pop-up"
+```
 
 ---
 
