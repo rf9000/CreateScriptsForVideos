@@ -107,7 +107,7 @@ async function dumpFrames(page: Page, path: string): Promise<void> {
   const parts: string[] = [];
   for (const [i, frame] of page.frames().entries()) {
     const text = await frame.locator('body').innerText({ timeout: 2000 }).catch(() => '');
-    const buttons = await frame.getByRole('button').allInnerTexts().catch(() => []);
+    const buttons: string[] = await frame.getByRole('button').allInnerTexts().catch(() => []);
     const dialogs = await frame.locator('[role=dialog],[role=alertdialog]').count().catch(() => 0);
     // Icon buttons (expand, close) have no text, only an aria-label or title.
     const icons = await frame.locator('[role=dialog] button').evaluateAll((els) =>
