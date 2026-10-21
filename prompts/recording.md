@@ -41,6 +41,14 @@ steps:
         runtimeRef: p2
       - action: Action76
     description: Invoke <caption>Statistics</caption>
+  - type: input                         # a field inside a part (a wizard's list, a document's lines)
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+      - part: SetupBankAccountList      # the part control on the host page, from the symbols
+      - repeater: BankAccountList
+      - field: CommunicationType
+    value: Direct
+    description: Input <value>Direct</value> into <caption>Communication Type</caption>
   - type: invoke                        # open the current row of a list
     target:
       - page: Bank Account List
@@ -66,6 +74,9 @@ Rules:
   and give steps on that first page no `runtimeRef`. Don't navigate from the Role Center unless
   the Role Center is part of what the video teaches.
 - Put the visible caption in `<caption>` in each description.
+- A page the symbols tool lists as a `part` of another page never opens on its own: wizard steps,
+  list parts and document lines are shown inside their host page. Give it no `page-shown`; target
+  it through the host with `- part: <part name>`, as above. A wizard's Next keeps the same page.
 - Add a `page-shown` step for every page that opens. For a confirmation dialog, add its
   `page-shown` (with `modal: true`) and the button step.
 - End with `validate` steps for what the viewer is meant to see change, but only values that are

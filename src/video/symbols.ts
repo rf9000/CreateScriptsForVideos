@@ -18,6 +18,8 @@ export type PageSymbols = {
   fields: Map<string, { caption?: string; group?: string }>;
   actions: Map<string, { caption?: string }>;
   repeaters: Set<string>;
+  /** Part control name -> the id of the page it shows (e.g. a wizard's list part). */
+  parts: Map<string, number>;
 };
 
 export type SymbolIndex = { pages: Map<string, PageSymbols> };
@@ -27,6 +29,7 @@ export const BUILT_IN_ACTIONS = new Set(['Control_New', 'Control_Edit', 'Control
 
 const KIND_GROUP = 1;
 const KIND_REPEATER = 3;
+const KIND_PART = 6;
 const KIND_FIELD = 8;
 
 type Json = Record<string, any>;
@@ -61,6 +64,7 @@ function addControls(page: PageSymbols, controls: Json[] | undefined, group?: st
   for (const c of controls ?? []) {
     if (c['Kind'] === KIND_FIELD) page.fields.set(c['Name'], { caption: captionOf(c), group });
     if (c['Kind'] === KIND_REPEATER) page.repeaters.add(c['Name']);
+    if (c['Kind'] === KIND_PART && typeof c['RelatedPagePartId']?.['Id'] === 'number') page.parts.set(c['Name'], c['RelatedPagePartId']['Id']);
     // The first group below the page root is the FastTab.
     const childGroup = group ?? (c['Kind'] === KIND_GROUP ? (captionOf(c) ?? c['Name']) : undefined);
     addControls(page, c['Controls'], childGroup);
@@ -82,7 +86,7 @@ export function buildIndex(refs: unknown[]): SymbolIndex {
     const found: Json[] = [];
     collect(ref, 'Pages', found);
     for (const p of found) {
-      const page: PageSymbols = { id: p['Id'], name: p['Name'], fields: new Map(), actions: new Map(), repeaters: new Set() };
+      const page: PageSymbols = { id: p['Id'], name: p['Name'], fields: new Map(), actions: new Map(), repeaters: new Set(), parts: new Map() };
       addControls(page, p['Controls']);
       addActions(page, p['Actions']);
       pages.set(String(p['Name']).toLowerCase(), page);
@@ -153,10 +157,26 @@ function suggest(wanted: string, candidates: Array<{ name: string; caption?: str
 
 const hint = (s?: string) => (s ? ` (did you mean "${s}"?)` : '');
 
+const pageById = (index: SymbolIndex, id: number) => [...index.pages.values()].find((p) => p.id === id);
+
+/** A page whose part shows `page`, among the pages the recording uses. */
+function hostOf(page: PageSymbols, used: Set<string>, index: SymbolIndex): { host: PageSymbols; part: string } | undefined {
+  for (const name of used) {
+    const host = index.pages.get(name);
+    for (const [part, id] of host?.parts ?? []) if (id === page.id) return { host: host!, part };
+  }
+  return undefined;
+}
+
 /** Names in a recording that BC won't find. Empty = all names exist. */
 export function lintRecordingNames(rec: Recording, index: SymbolIndex): string[] {
   const problems: string[] = [];
   const allPages = [...index.pages.values()].map((p) => ({ name: p.name }));
+  const used = new Set<string>();
+  for (const step of rec.steps) {
+    const name = (step.source?.page ?? step.target?.find((t) => t['page'])?.['page']) as string | undefined;
+    if (name) used.add(name.toLowerCase());
+  }
   rec.steps.forEach((step, i) => {
     if (step.type === 'page-shown') {
       const name = step.source?.page;
@@ -164,16 +184,36 @@ export function lintRecordingNames(rec: Recording, index: SymbolIndex): string[]
       if (name && step['modal'] !== true && !index.pages.has(name.toLowerCase())) {
         problems.push(`step ${i}: page "${name}" not found in the symbols${hint(suggest(name, allPages))}`);
       }
+      const shown = name ? index.pages.get(name.toLowerCase()) : undefined;
+      const inside = shown ? hostOf(shown, used, index) : undefined;
+      if (inside) {
+        problems.push(
+          `step ${i}: "${shown!.name}" is not a page that opens; it is part "${inside.part}" of "${inside.host.name}". ` +
+            `Drop this page-shown and target it as [{page: "${inside.host.name}"}, {part: "${inside.part}"}, ...]`,
+        );
+      }
       return;
     }
     const pageName = step.target?.find((t) => t['page'])?.['page'] as string | undefined;
     if (!pageName) return;
-    const page = index.pages.get(pageName.toLowerCase());
+    let page = index.pages.get(pageName.toLowerCase());
     if (!page) {
       problems.push(`step ${i}: page "${pageName}" not found in the symbols${hint(suggest(pageName, allPages))}`);
       return;
     }
     for (const t of step.target ?? []) {
+      const part = t['part'] as string | undefined;
+      if (part) {
+        const id = page.parts.get(part);
+        if (id === undefined) {
+          problems.push(`step ${i}: part "${part}" is not on page "${page.name}"${hint(suggest(part, [...page.parts.keys()].map((name) => ({ name }))))}`);
+          return;
+        }
+        const inner = pageById(index, id);
+        if (!inner) return; // the part's page isn't in the symbols; nothing more to check
+        page = inner;
+        continue;
+      }
       const field = t['field'] as string | undefined;
       const action = t['action'] as string | undefined;
       const repeater = t['repeater'] as string | undefined;
@@ -200,7 +240,14 @@ export function fieldGroupsFor(rec: Recording, index: SymbolIndex): StagingHints
     const pageName = step.target?.find((t) => t['page'])?.['page'] as string | undefined;
     const field = step.target?.find((t) => t['field'])?.['field'] as string | undefined;
     if (!pageName || !field) continue;
-    const group = index.pages.get(pageName.toLowerCase())?.fields.get(field)?.group;
+    // A field inside a part belongs to the part's page.
+    let page = index.pages.get(pageName.toLowerCase());
+    for (const t of step.target ?? []) {
+      const part = t['part'] as string | undefined;
+      const id = part ? page?.parts.get(part) : undefined;
+      if (id !== undefined) page = pageById(index, id);
+    }
+    const group = page?.fields.get(field)?.group;
     if (group) fieldGroups[field] = group;
   }
   return { fieldGroups };
@@ -215,6 +262,7 @@ export function describePage(index: SymbolIndex, name: string): string {
   }
   const q = (c?: string) => (c ? `  "${c}"` : '');
   const lines = [`${page.name} (page ${page.id})`];
+  for (const [p, id] of page.parts) lines.push(`part ${p}  -> ${pageById(index, id)?.name ?? `page ${id}`} (target it as {part: ${p}}, not as a page)`);
   for (const r of page.repeaters) lines.push(`repeater ${r}`);
   for (const [n, f] of page.fields) lines.push(`field ${n}${q(f.caption)}${f.group ? `  [FastTab: ${f.group}]` : ''}`);
   for (const [n, a] of page.actions) lines.push(`action ${n}${q(a.caption)}`);

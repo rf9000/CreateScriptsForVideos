@@ -154,3 +154,57 @@ describe('reading .app packages', () => {
     expect(loadSymbolIndex([dir]).pages.has('bank account card')).toBe(true);
   });
 });
+
+// Shape of Continia Banking's Bank Account Setup wizard: a NavigatePage whose step shows a list part.
+const wizardApp = {
+  Pages: [
+    {
+      Id: 71553588, Name: 'CTS-CB MultiBankAccAssistSetup',
+      Controls: [{ Name: 'Content', Controls: [
+        group('Step2', undefined, [{ Kind: 6, Name: 'SetupBankAccountList', RelatedPagePartId: { Name: '', Id: 71553589 } }]),
+      ] }],
+      Actions: [action('ActionNext', 'Next')],
+    },
+    {
+      Id: 71553589, Name: 'CTS-CB SetupMultiBankAccList',
+      Controls: [{ Kind: 3, Name: 'BankAccountList', Controls: [field('CommunicationType', 'Communication Type')] }],
+      Actions: [],
+    },
+  ],
+};
+
+describe('page parts', () => {
+  const index = buildIndex([wizardApp]);
+
+  test('indexes part controls with the page they show', () => {
+    expect(index.pages.get('cts-cb multibankaccassistsetup')!.parts.get('SetupBankAccountList')).toBe(71553589);
+  });
+
+  test('a page-shown for a part of a page in the recording is rejected with the target to use', () => {
+    const problems = lintRecordingNames(rec([
+      { type: 'invoke', target: [{ page: 'CTS-CB MultiBankAccAssistSetup' }, { action: 'ActionNext' }] },
+      { type: 'page-shown', source: { page: 'CTS-CB SetupMultiBankAccList' }, runtimeId: 'p2' },
+    ]), index);
+    expect(problems).toEqual([
+      'step 1: "CTS-CB SetupMultiBankAccList" is not a page that opens; it is part "SetupBankAccountList" of "CTS-CB MultiBankAccAssistSetup". ' +
+        'Drop this page-shown and target it as [{page: "CTS-CB MultiBankAccAssistSetup"}, {part: "SetupBankAccountList"}, ...]',
+    ]);
+  });
+
+  test('targets through a part are checked against the part\'s page', () => {
+    expect(lintRecordingNames(rec([
+      { type: 'input', target: [{ page: 'CTS-CB MultiBankAccAssistSetup' }, { part: 'SetupBankAccountList' }, { repeater: 'BankAccountList' }, { field: 'CommunicationType' }], value: 'Direct' },
+    ]), index)).toEqual([]);
+    expect(lintRecordingNames(rec([
+      { type: 'input', target: [{ page: 'CTS-CB MultiBankAccAssistSetup' }, { part: 'SetupBankAccountList' }, { field: 'CommType' }], value: 'Direct' },
+    ]), index)).toEqual(['step 0: field "CommType" is not on page "CTS-CB SetupMultiBankAccList"']);
+    expect(lintRecordingNames(rec([
+      { type: 'input', target: [{ page: 'CTS-CB MultiBankAccAssistSetup' }, { part: 'BankList' }, { field: 'CommunicationType' }], value: 'Direct' },
+    ]), index)).toEqual(['step 0: part "BankList" is not on page "CTS-CB MultiBankAccAssistSetup"']);
+  });
+
+  test('describePage lists parts and how to target them', () => {
+    expect(describePage(index, 'CTS-CB MultiBankAccAssistSetup')).toContain(
+      'part SetupBankAccountList  -> CTS-CB SetupMultiBankAccList (target it as {part: SetupBankAccountList}, not as a page)');
+  });
+});
