@@ -26,9 +26,11 @@ These rules hold for every stage:
   the description, the comments and the previous version. The later feedback wins where two disagree.
   If feedback asks for something the code can't do, do the closest thing that works and record the
   difference as a gap.
-- **The continia CLI reads its token from `CONTINIA_API_TOKEN`,** which is already set. Pass
-  `--auth-method api-token` as the first option of every command so a local Azure AD setting can't
-  take over. Never print the token or write it into a file.
+- **The continia CLI is already signed in.** `CONTINIA_AUTH_METHOD` in your environment picks the
+  credentials (an API token or an Azure AD session) and the CLI reads it on every call. Don't pass
+  `--auth-method` or `--token`, and don't run `continia auth login` or `logout`: either would
+  override or break the pipeline's sign-in. Never print credentials or write them into a file. If
+  a command fails with 401 or "token not found", stop and report it; it isn't yours to fix.
 - Generate GUIDs with `bun -e "console.log(crypto.randomUUID())"`, which works on Windows and Linux.
 
 When the stage is done, return the structured result the stage asks for. If the stage cannot

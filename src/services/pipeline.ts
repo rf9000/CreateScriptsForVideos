@@ -199,7 +199,7 @@ function pathsBlock(config: AppConfig, paths: ItemPaths): string {
     `- continia-banking repo (read-only): ${resolve(config.continiaBankingPath)}`,
     `- Recording script file: ${paths.scriptPath}`,
     `- PTE folder (app.json goes directly here): ${paths.ptePath}`,
-    `- continia CLI: \`${config.continiaCliPath} --auth-method api-token <command>\` (token is in CONTINIA_API_TOKEN)`,
+    `- continia CLI: \`${config.continiaCliPath} <command>\` (already signed in; no --auth-method or --token)`,
   ].join('\n');
 }
 

@@ -440,3 +440,14 @@ describe('runPipeline — country app', () => {
     expect(cli.installAppById).not.toHaveBeenCalled();
   });
 });
+
+describe('runPipeline — continia credentials in prompts', () => {
+  test('stage prompts never pin api-token, so the configured method applies', async () => {
+    const { deps, query } = makeDeps();
+    await runPipeline(testConfig({ continiaAuthMethod: 'azure-ad' }), context, {}, deps);
+    for (const call of query.mock.calls) {
+      expect(String(call[0].prompt)).not.toContain('--auth-method api-token');
+      expect(String(call[0].prompt)).toContain('already signed in');
+    }
+  });
+});
