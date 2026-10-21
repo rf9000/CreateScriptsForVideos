@@ -124,7 +124,16 @@ function asObject(value: unknown): Json {
   throw new ContiniaCliError('expected a JSON object from continia');
 }
 
-export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): ContiniaCli {
+/** DemoPortal's catalogue sometimes times out on one app; a rerun skips the apps already installed. */
+const DEPS_ATTEMPTS = 3;
+const DEPS_RETRY_DELAY_MS = 15_000;
+
+export function createContiniaCli(
+  config: AppConfig,
+  exec: Exec = defaultExec,
+  opts: { retryDelayMs?: number } = {},
+): ContiniaCli {
+  const retryDelayMs = opts.retryDelayMs ?? DEPS_RETRY_DELAY_MS;
   /** Run one command. `secret` keeps stdout out of error messages (passwords). */
   async function run(args: string[], opts: { json?: boolean; secret?: boolean; cwd?: string } = {}): Promise<unknown> {
     const json = opts.json ?? true;
@@ -206,7 +215,15 @@ export function createContiniaCli(config: AppConfig, exec: Exec = defaultExec): 
 
     async installDependencies(envId, appDir, cwd) {
       // The CLI finds apps relative to the current directory and rejects some absolute paths.
-      await run(['deps', 'install', envId, appDir], { json: false, cwd });
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await run(['deps', 'install', envId, appDir], { json: false, cwd });
+          return;
+        } catch (err) {
+          if (attempt >= DEPS_ATTEMPTS || !/timed out/i.test(String(err))) throw err;
+          await Bun.sleep(retryDelayMs);
+        }
+      }
     },
 
     async listApps(envId) {

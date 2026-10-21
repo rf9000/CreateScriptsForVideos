@@ -169,3 +169,25 @@ describe('installDependencies', () => {
     expect(exec.mock.calls[0]![3]).toBe('/repos/banking');
   });
 });
+
+describe('installDependencies retries', () => {
+  const timeout = { exitCode: 1, stderr: 'Error installing Continia Banking - Import | Request to https://x/apps.json timed out after 120000ms' };
+
+  test('retries a catalogue timeout and succeeds', async () => {
+    const exec = execReturning(timeout, { stdout: 'done' });
+    await createContiniaCli(testConfig(), exec, { retryDelayMs: 0 }).installDependencies('e1', 'banking-w1', '/r');
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
+  test('gives up after three timeouts', async () => {
+    const exec = execReturning(timeout);
+    await expect(createContiniaCli(testConfig(), exec, { retryDelayMs: 0 }).installDependencies('e1', 'banking-w1', '/r')).rejects.toThrow('timed out');
+    expect(exec).toHaveBeenCalledTimes(3);
+  });
+
+  test('does not retry other errors', async () => {
+    const exec = execReturning({ exitCode: 1, stderr: 'app not found' });
+    await expect(createContiniaCli(testConfig(), exec, { retryDelayMs: 0 }).installDependencies('e1', 'banking-w1', '/r')).rejects.toThrow('app not found');
+    expect(exec).toHaveBeenCalledTimes(1);
+  });
+});
