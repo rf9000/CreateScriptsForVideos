@@ -77,6 +77,9 @@ Rules:
 - A page the symbols tool lists as a `part` of another page never opens on its own: wizard steps,
   list parts and document lines are shown inside their host page. Give it no `page-shown`; target
   it through the host with `- part: <part name>`, as above. A wizard's Next keeps the same page.
+- When the flow leaves Business Central (an action opens a pop-up on another site, such as a
+  bank's login), end the recording with the action that opens it. Nothing after it can be
+  replayed. Narrate that step with what happens next, and say in `notes` where it stops.
 - Add a `page-shown` step for every page that opens. For a confirmation dialog, add its
   `page-shown` (with `modal: true`) and the button step.
 - End with `validate` steps for what the viewer is meant to see change, but only values that are
