@@ -53,6 +53,8 @@ const AFTER_STEP_PAUSE_MS = 700;
 const NARRATION_GAP_MS = 400;
 /** Hold on the final state after the last narration. */
 const END_TAIL_MS = 1500;
+/** Quiet start on the first page, so the first narrated words don't land on the video's first frame. */
+export const LEAD_IN_MS = 1500;
 const TYPE_DELAY_MS = 70;
 const PASSIVE = new Set(['page-shown', 'page-closed', 'validate', 'wait']);
 
@@ -134,6 +136,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     await page.waitForTimeout(500);
     // Everything before the first step (loading, login landing) is trimmed from the final video.
     timing.trimStartMs = Date.now() - videoStart;
+    await page.waitForTimeout(LEAD_IN_MS);
 
     let narrationEndsAt = 0;
     for (const [index, step] of opts.recording.steps.entries()) {
