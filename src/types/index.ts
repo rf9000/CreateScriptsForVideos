@@ -127,6 +127,26 @@ export interface LedgerRecord {
   reason?: string;
   /** The full error output of a failed run, capped in length. */
   error?: string;
+  /** Lowercased email of whoever tagged the item for this run, or 'unknown'. */
+  triggeredBy?: string;
+}
+
+/** An Azure DevOps identity. */
+export interface IdentityRef {
+  id?: string;
+  displayName?: string;
+  uniqueName?: string;
+}
+
+/**
+ * One revision from `/workItems/{id}/updates`. `fields` maps a field reference
+ * name to its old/new value for that revision.
+ */
+export interface WorkItemUpdate {
+  id?: number;
+  revisedBy?: IdentityRef;
+  revisedDate?: string;
+  fields?: Record<string, { oldValue?: unknown; newValue?: unknown }>;
 }
 
 /** Connection details for a provisioned BC environment. */

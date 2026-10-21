@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test';
-import type { AppConfig, WorkItemResponse, ScriptResult } from '../../src/types/index.ts';
+import type { AppConfig, WorkItemResponse, ScriptResult, WorkItemUpdate } from '../../src/types/index.ts';
 import { processItem, isBotComment, BOT_COMMENT_MARKER } from '../../src/services/processor.ts';
 import type { ProcessorDeps } from '../../src/services/processor.ts';
 
@@ -84,6 +84,7 @@ function makeDeps(overrides: Partial<ProcessorDeps> = {}): ProcessorDeps {
     readVideo: mock(() => new Uint8Array([1, 2])),
     fileSize: mock(() => 1000),
     recordRun: mock(() => {}),
+    fetchUpdates: mock(async () => []),
     trackJob: mock(() => {}),
     ...overrides,
   };
@@ -521,6 +522,29 @@ describe('processItem — run ledger', () => {
     const [run] = recorded(deps);
     expect(run).toMatchObject({ outcome: 'failed', runCostUsd: 1.25, reason: 'deploy failed' });
     expect(run!.error).toBe('deploy failed\nAL0132: line 1\nAL0118: line 2');
+  });
+
+  test('records who tagged the item, from the update history', async () => {
+    const fetchUpdates = mock(async (_config: AppConfig, _id: number): Promise<WorkItemUpdate[]> => [
+      { revisedBy: { uniqueName: 'Ann@X.com' }, fields: { 'System.Tags': { newValue: 'create video' } } },
+    ]);
+    const deps = makeDeps({ fetchUpdates });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(recorded(deps)[0]).toMatchObject({ triggeredBy: 'ann@x.com' });
+    expect(fetchUpdates.mock.calls[0]![1]).toBe(42);
+  });
+
+  test('records unknown when the history lookup fails, without failing the run', async () => {
+    const deps = makeDeps({ fetchUpdates: mock(async () => { throw new Error('ADO 503'); }) });
+    const result = await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(result.processed).toBe(true);
+    expect(recorded(deps)[0]).toMatchObject({ triggeredBy: 'unknown' });
+  });
+
+  test('does not look up history when no run is recorded', async () => {
+    const deps = makeDeps({ fetchComments: mock(async () => { throw new Error('ADO 503'); }) });
+    await processItem(mockConfig(), mockWorkItem(), deps);
+    expect(deps.fetchUpdates).not.toHaveBeenCalled();
   });
 
   test('records a failure after the run, e.g. a failed upload', async () => {

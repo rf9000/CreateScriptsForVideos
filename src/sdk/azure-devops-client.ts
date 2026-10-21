@@ -3,6 +3,7 @@ import type {
   ItemMode,
   WorkItemResponse,
   WiqlQueryResult,
+  WorkItemUpdate,
 } from '../types/index.ts';
 
 export class AzureDevOpsError extends Error {
@@ -207,6 +208,16 @@ export async function getWorkItemComments(
   const path = `wit/workItems/${workItemId}/comments?order=asc&api-version=7.1-preview.4`;
   const data = await adoFetchWithRetry<CommentsResponse>(config, path);
   return data.comments.map((c) => c.text);
+}
+
+/** Revision history of a work item, oldest first. */
+export async function getWorkItemUpdates(
+  config: AppConfig,
+  workItemId: number,
+): Promise<WorkItemUpdate[]> {
+  const path = `wit/workItems/${workItemId}/updates?api-version=7.1`;
+  const data = await adoFetchWithRetry<{ value?: WorkItemUpdate[] }>(config, path);
+  return data.value ?? [];
 }
 
 /**

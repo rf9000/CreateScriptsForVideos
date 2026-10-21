@@ -5,6 +5,7 @@ import type {
   ItemProcessResult,
   ItemMode,
   ScriptResult,
+  WorkItemUpdate,
 } from '../types/index.ts';
 import type { AttachmentRef } from '../sdk/azure-devops-client.ts';
 import type { WorkItemContext, PipelineOptions } from './pipeline.ts';
@@ -12,6 +13,7 @@ import type { WorkItemContext, PipelineOptions } from './pipeline.ts';
 import * as sdk from '../sdk/azure-devops-client.ts';
 import { runPipeline } from './pipeline.ts';
 import { htmlToText } from './html.ts';
+import { lookupTriggeredBy } from '../utils/triggered-by.ts';
 import { appendRun, capError, summarizeError } from './cost-ledger.ts';
 import { jobBoard } from './jobs.ts';
 import type { JobPhase } from './jobs.ts';
@@ -44,6 +46,8 @@ export interface ProcessorDeps {
   fileSize: (path: string) => number;
   /** Append a finished run to the dashboard's ledger. */
   recordRun: (config: AppConfig, run: RunRecord) => void;
+  /** The item's revision history, used to find who tagged it. */
+  fetchUpdates: (config: AppConfig, workItemId: number) => Promise<WorkItemUpdate[]>;
   /** Show the item's current stage on the dashboard; a null phase takes it off. */
   trackJob: (config: AppConfig, item: { itemId: number; title: string; mode: ItemMode }, phase: JobPhase | null) => void;
 }
@@ -60,6 +64,7 @@ export const defaultProcessorDeps: ProcessorDeps = {
   readVideo: (path) => new Uint8Array(readFileSync(path)),
   fileSize: (path) => statSync(path).size,
   recordRun: (config, run) => appendRun(config.costLogPath, run),
+  fetchUpdates: sdk.getWorkItemUpdates,
   trackJob: (config, item, phase) => {
     const board = jobBoard(config.jobsPath);
     if (phase) board.enter(item.itemId, item.title, item.mode, phase);
@@ -213,7 +218,14 @@ export async function processItem(
     if (track.attempted && !config.dryRun) deps.trackJob(config, job, null);
   }
   // Dry runs post nothing, so they record nothing.
-  if (track.attempted && !config.dryRun) safeRecordRun(deps, config, item.id, title, mode, track, outcome);
+  if (track.attempted && !config.dryRun) {
+    const triggeredBy = await lookupTriggeredBy(
+      () => deps.fetchUpdates(config, item.id),
+      [config.createScriptTag, config.createVideoTag],
+      (msg) => log(`  Item #${item.id}: ${msg}`),
+    );
+    safeRecordRun(deps, config, item.id, title, mode, track, outcome, triggeredBy);
+  }
   return outcome;
 }
 
@@ -227,6 +239,7 @@ function safeRecordRun(
   mode: ItemMode,
   track: RunTrack,
   outcome: ItemProcessResult,
+  triggeredBy: string,
 ): void {
   const video = track.result?.video;
   const reason = outcome.error
@@ -243,6 +256,7 @@ function safeRecordRun(
       mode,
       runCostUsd: outcome.costUsd ?? 0,
       stages: track.result?.stages ?? [],
+      triggeredBy,
       ...(reason ? { reason } : {}),
       ...(outcome.error ? { error: capError(outcome.error) } : {}),
     });
