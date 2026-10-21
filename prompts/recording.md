@@ -41,14 +41,55 @@ steps:
         runtimeRef: p2
       - action: Action76
     description: Invoke <caption>Statistics</caption>
-  - type: input                         # a field inside a part (a wizard's list, a document's lines)
+  # Shapes below are from BC's own recorder (spikes/replay-video/recordings/real-banksapi-connect.yml).
+  - type: set-current-row               # pick a row in a list part before editing it
     target:
       - page: CTS-CB MultiBankAccAssistSetup
       - part: SetupBankAccountList      # the part control on the host page, from the symbols
+      - page: CTS-CB SetupMultiBankAccList   # the part's own page, right after the part
+      - repeater: BankAccountList
+    targetRecord:
+      relative: -6                      # rows to move from the current row (negative = up)
+    description: Set current row in <caption>BankAccountList</caption>
+  - type: input                         # a field in that row
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+      - part: SetupBankAccountList
+      - page: CTS-CB SetupMultiBankAccList
       - repeater: BankAccountList
       - field: CommunicationType
-    value: Direct
-    description: Input <value>Direct</value> into <caption>Communication Type</caption>
+    value: 2                            # option/enum fields take the ordinal, not the caption
+    description: Input <value>2</value> into <caption>Communication Type</caption>
+  - type: invoke                        # a lookup: open it, the list shows, OK picks the current row
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+      - field: Bank System
+    invokeType: Lookup
+    description: Invoke <operation>Open lookup</operation> on <caption>Bank System</caption>
+  - type: page-shown
+    source:
+      page: CTS-CB Bank System Map List
+    modal: true
+    runtimeId: p3
+    description: Page <caption>Bank Systems</caption> was shown.
+  - type: invoke
+    target:
+      - page: CTS-CB Bank System Map List
+        runtimeRef: p3
+    invokeType: LookupOk
+    description: Invoke <operation>Lookup OK</operation> on <caption>Bank Systems</caption>
+  - type: page-closed
+    source:
+      page: CTS-CB Bank System Map List
+    runtimeId: p3
+    description: Page <caption>Bank Systems</caption> was closed.
+  - type: invoke                        # a link field (opens a pop-up on another site)
+    target:
+      - page: CTS-CB BANKS api Setup
+        runtimeRef: p4
+      - field: SyncBankAccWithBanksAPILink
+    invokeType: DrillDown
+    description: Invoke <operation>Drill down</operation> on <caption>Connect Bank Account</caption>
   - type: invoke                        # open the current row of a list
     target:
       - page: Bank Account List
@@ -76,10 +117,19 @@ Rules:
 - Put the visible caption in `<caption>` in each description.
 - A page the symbols tool lists as a `part` of another page never opens on its own: wizard steps,
   list parts and document lines are shown inside their host page. Give it no `page-shown`; target
-  it through the host with `- part: <part name>`, as above. A wizard's Next keeps the same page.
+  it through the host with `- part: <part name>` followed by `- page: <the part's page>`, as above.
+  A wizard's Next keeps the same page.
+- Pick a list row with `set-current-row` before acting on it. `relative` counts rows from the row
+  that is current when the list opens; work it out from the order the PTE seeds the records in,
+  and say in `notes` which row you meant.
+- Option and enum fields take the value's ordinal (0, 1, 2, ...), as BC's recorder writes it. Find
+  it in the AL enum or option declaration in continia-banking.
 - When the flow leaves Business Central (an action opens a pop-up on another site, such as a
   bank's login), end the recording with the action that opens it. Nothing after it can be
-  replayed. Narrate that step with what happens next, and say in `notes` where it stops.
+  replayed. Narrate that step with what happens next, and say in `notes` where it stops. Such a
+  recording needs no `validate` step after it.
+- Cover the whole flow up to that point: every step of the recording script that happens inside
+  Business Central belongs in the recording. Don't stop early.
 - Add a `page-shown` step for every page that opens. For a confirmation dialog, add its
   `page-shown` (with `modal: true`) and the button step.
 - End with `validate` steps for what the viewer is meant to see change, but only values that are

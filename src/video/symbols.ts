@@ -214,6 +214,15 @@ export function lintRecordingNames(rec: Recording, index: SymbolIndex): string[]
         page = inner;
         continue;
       }
+      // BC's recorder names the part's page right after the part.
+      const inner = t['page'] as string | undefined;
+      if (inner && t !== step.target![0]) {
+        if (inner.toLowerCase() !== page.name.toLowerCase()) {
+          problems.push(`step ${i}: page "${inner}" after the part is not the part's page "${page.name}"`);
+          return;
+        }
+        continue;
+      }
       const field = t['field'] as string | undefined;
       const action = t['action'] as string | undefined;
       const repeater = t['repeater'] as string | undefined;

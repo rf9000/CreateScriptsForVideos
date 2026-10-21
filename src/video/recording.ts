@@ -26,12 +26,19 @@ export type StagingHints = { fieldGroups?: Record<string, string> };
 /** Narration text per top-level recording step index. */
 export type Narration = Record<number, string>;
 
-const KNOWN_TYPES = new Set(['navigate', 'page-shown', 'filter', 'input', 'focus', 'invoke', 'validate', 'wait', 'scope', 'include']);
+// From BC's recorder; set-current-row picks a list row, page-closed follows a lookup's OK.
+const KNOWN_TYPES = new Set([
+  'navigate', 'page-shown', 'page-closed', 'set-current-row', 'filter', 'input', 'focus', 'invoke', 'validate', 'wait', 'scope', 'include',
+]);
 
 /** Problems that would make BC's engine skip or misreport steps. Empty = fine. */
 export function lintRecording(rec: Recording): string[] {
   const problems: string[] = [];
   const runtimeIds = new Set<string>();
+  // BC's recorder refers to the page that was open when recording started (the start page) by a
+  // runtimeRef that no page-shown defines; the first step uses it.
+  const startRef = rec.steps[0]?.type !== 'page-shown' ? rec.steps[0]?.target?.[0]?.['runtimeRef'] : undefined;
+  if (typeof startRef === 'string') runtimeIds.add(startRef);
   rec.steps.forEach((step, i) => {
     if (!KNOWN_TYPES.has(step.type)) problems.push(`step ${i}: unknown step type "${step.type}"`);
     if (step.type === 'page-shown' && typeof step.runtimeId === 'string') runtimeIds.add(step.runtimeId);
@@ -45,7 +52,11 @@ export function lintRecording(rec: Recording): string[] {
       problems.push(`step ${i}: ${step.type} step has no value`);
     }
   });
-  if (!rec.steps.some((s) => s.type === 'validate')) {
+  // A flow that ends on a link out of BC (a bank's login opened by a drill-down) has no outcome
+  // left to validate inside BC.
+  const last = rec.steps.at(-1);
+  const endsOnLinkOut = last?.type === 'invoke' && last['invokeType'] === 'DrillDown';
+  if (!endsOnLinkOut && !rec.steps.some((s) => s.type === 'validate')) {
     problems.push('no validate step: the recording must prove the demo outcome');
   }
   return problems;

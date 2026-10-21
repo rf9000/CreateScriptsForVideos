@@ -1,0 +1,94 @@
+name: Recording
+description: Test recording
+telemetryId: 7bcc961d-b15c-4a6b-888e-e608cafefee5
+start:
+  profile: ORDER PROCESSOR
+steps:
+  - type: invoke
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - action: ActionNext
+    description: Invoke <caption>Next</caption>
+  - type: set-current-row
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - part: SetupBankAccountList
+      - page: CTS-CB SetupMultiBankAccList
+      - repeater: BankAccountList
+    targetRecord:
+      relative: -6
+    description: Set current row in <caption>BankAccountList</caption>
+  - type: input
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - part: SetupBankAccountList
+      - page: CTS-CB SetupMultiBankAccList
+      - repeater: BankAccountList
+      - field: CommunicationType
+    value: 2
+    description: Input <value>2</value> into <caption>Communication Type</caption>
+  - type: invoke
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - action: ActionNext
+    description: Invoke <caption>Next</caption>
+  - type: invoke
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - action: ActionNext
+    description: Invoke <caption>Next</caption>
+  - type: invoke
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - field: Bank System
+    invokeType: Lookup
+    description: Invoke <operation>Open lookup</operation> on <caption>Bank System</caption>
+  - type: page-shown
+    source:
+      page: CTS-CB Bank System Map List
+    modal: true
+    runtimeId: b4h
+    description: Page <caption>Bank Systems</caption> was shown.
+  - type: invoke
+    target:
+      - page: CTS-CB Bank System Map List
+        runtimeRef: b4h
+    invokeType: LookupOk
+    description: Invoke <operation>Lookup OK</operation> on <caption>Bank Systems</caption>
+  - type: page-closed
+    source:
+      page: CTS-CB Bank System Map List
+    runtimeId: b4h
+    description: Page <caption>Bank Systems</caption> was closed.
+  - type: invoke
+    target:
+      - page: CTS-CB MultiBankAccAssistSetup
+        runtimeRef: b0
+      - action: ActionNext
+    description: Invoke <caption>Next</caption>
+  - type: page-shown
+    source:
+      page: CTS-CB BANKS api Setup
+    modal: true
+    runtimeId: b5f
+    description: Page <caption>Set up BANKSapi - PSD2</caption> was shown.
+  - type: invoke
+    target:
+      - page: CTS-CB BANKS api Setup
+        runtimeRef: b5f
+      - action: ActionNext
+    description: Invoke <caption>Next</caption>
+  - type: invoke
+    target:
+      - page: CTS-CB BANKS api Setup
+        runtimeRef: b5f
+      - field: SyncBankAccWithBanksAPILink
+    invokeType: DrillDown
+    description: Invoke <operation>Drill down</operation> on
+      <caption>SyncBankAccWithBanksAPILink</caption>

@@ -54,7 +54,7 @@ const NARRATION_GAP_MS = 400;
 /** Hold on the final state after the last narration. */
 const END_TAIL_MS = 1500;
 const TYPE_DELAY_MS = 70;
-const PASSIVE = new Set(['page-shown', 'validate', 'wait']);
+const PASSIVE = new Set(['page-shown', 'page-closed', 'validate', 'wait']);
 
 /** One step as its own recording; only the first slice carries start, or BC navigates back. */
 export function sliceFor(rec: Recording, index: number): Recording {

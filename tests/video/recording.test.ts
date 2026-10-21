@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { parse } from 'yaml';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { lintRecording, loadVideoInputs } from '../../src/video/recording.ts';
@@ -41,11 +42,12 @@ describe('lintRecording', () => {
     const bad: Recording = {
       ...good,
       steps: [
+        { type: 'invoke', target: [{ page: 'Bank Account List' }, { action: 'Control_New' }] },
         { type: 'input', target: [{ page: 'Bank Account Card', runtimeRef: 'zzz' }, { field: 'IBAN' }], value: 'x' },
         good.steps[5]!,
       ],
     };
-    expect(lintRecording(bad)).toContain('step 0: runtimeRef "zzz" has no earlier page-shown runtimeId');
+    expect(lintRecording(bad)).toContain('step 1: runtimeRef "zzz" has no earlier page-shown runtimeId');
   });
 
   test('requires a value on input and validate steps', () => {
@@ -75,5 +77,17 @@ describe('loadVideoInputs', () => {
 
   test('throws when recording.yml is missing', () => {
     expect(() => loadVideoInputs(join(dir, 'nope'))).toThrow('recording.yml');
+  });
+});
+
+describe('recordings from BC\'s own recorder', () => {
+  const real = parse(readFileSync(join(import.meta.dir, '..', '..', 'spikes', 'replay-video', 'recordings', 'real-banksapi-connect.yml'), 'utf-8')) as Recording;
+
+  test('the recorded BANKSapi flow passes the structure lint', () => {
+    expect(lintRecording(real)).toEqual([]);
+  });
+
+  test('a recording that does not end on a link out still needs a validate step', () => {
+    expect(lintRecording({ description: 'd', steps: real.steps.slice(0, 3) })).toContain('no validate step: the recording must prove the demo outcome');
   });
 });

@@ -1,0 +1,9 @@
+steps:
+  0: To set up PSD2 communication through BANKSapi, we start in Bank Account Setup.
+  1: Here we choose the bank account to connect. I'll use the Commerzbank account.
+  2: Direct communication lets Business Central exchange information with the bank without handling bank files.
+  3: Continia Banking recognizes the bank from the IBAN and checks which communication options it supports.
+  5: This bank supports several bank systems. We choose BANKSapi - PSD2 to connect through PSD2.
+  9: Now the BANKSapi assisted setup takes over.
+  11: Have your online banking login ready. The next part happens at your bank, not in Business Central.
+  12: This link opens the secure BANKSapi flow, where you identify yourself at your bank and grant access to your accounts.
