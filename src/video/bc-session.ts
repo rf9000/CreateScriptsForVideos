@@ -88,16 +88,22 @@ const STARTUP_DIALOGS: Array<{ text: RegExp; button: string; choose?: string }> 
  */
 async function answerDialog(page: Page, text: RegExp, button: string, choose?: string): Promise<boolean> {
   for (const frame of page.frames()) {
-    const shown = await frame.getByText(text).first().isVisible().catch(() => false);
-    if (!shown) continue;
+    // innerText holds only visible text; BC also keeps hidden copies of dialog text for screen
+    // readers, which made a getByText(...).first() match invisible.
+    const visibleText = await frame.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+    if (!text.test(visibleText)) continue;
     if (choose) {
-      const option = frame.getByRole('radio', { name: choose, exact: true }).last();
-      const target = (await option.isVisible().catch(() => false)) ? option : frame.getByText(choose, { exact: true }).last();
-      await target.click();
+      const option = frame.getByRole('radio', { name: choose, exact: true }).filter({ visible: true });
+      const label = frame.getByText(choose, { exact: true }).filter({ visible: true });
+      const target = (await option.count()) > 0 ? option.last() : label.last();
+      await target.click().catch((err) => console.log(`  Could not choose "${choose}": ${String(err).split('\n')[0]}`));
     }
-    const target = frame.getByRole('button', { name: button, exact: true }).last();
-    if (!(await target.isVisible().catch(() => false))) continue;
-    await target.click();
+    const target = frame.getByRole('button', { name: button, exact: true }).filter({ visible: true });
+    if ((await target.count()) === 0) {
+      console.log(`  Dialog "${text.source}" is open, but no visible "${button}" button`);
+      continue;
+    }
+    await target.last().click();
     return true;
   }
   return false;
@@ -140,8 +146,8 @@ export function wizardMove(state: { finish: boolean; next: boolean }): 'finish' 
 
 async function enabledButton(page: Page, name: string) {
   for (const frame of page.frames()) {
-    const button = frame.getByRole('button', { name, exact: true }).last();
-    if ((await button.isVisible().catch(() => false)) && (await button.isEnabled().catch(() => false))) return button;
+    const button = frame.getByRole('button', { name, exact: true }).filter({ visible: true }).last();
+    if ((await button.count()) > 0 && (await button.isEnabled().catch(() => false))) return button;
   }
   return undefined;
 }
