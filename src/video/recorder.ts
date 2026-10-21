@@ -3,7 +3,7 @@ import type { Locator, Page } from 'playwright';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { animateClick, injectCursor } from './cursor.ts';
-import { dismissTeachingTips, findTarget, stage, typeVisibly, visibility } from './staging.ts';
+import { dismissTeachingTips, expandDialogs, findTarget, stage, typeVisibly, visibility } from './staging.ts';
 import { awaitFrame, errorText, openSession, play } from './bc-session.ts';
 import type { Recording, StagingHints } from './recording.ts';
 
@@ -109,6 +109,10 @@ async function dumpFrames(page: Page, path: string): Promise<void> {
     const text = await frame.locator('body').innerText({ timeout: 2000 }).catch(() => '');
     const buttons = await frame.getByRole('button').allInnerTexts().catch(() => []);
     const dialogs = await frame.locator('[role=dialog],[role=alertdialog]').count().catch(() => 0);
+    // Icon buttons (expand, close) have no text, only an aria-label or title.
+    const icons = await frame.locator('[role=dialog] button').evaluateAll((els) =>
+      els.map((e) => e.getAttribute('aria-label') ?? e.getAttribute('title') ?? '').filter(Boolean)).catch(() => [] as string[]);
+    if (icons.length) buttons.push(`[dialog icons: ${icons.join(', ')}]`);
     parts.push(`=== frame ${i} ${frame.url()}\ndialogs: ${dialogs}\nbuttons: ${buttons.map((b) => b.trim()).filter(Boolean).join(' | ')}\n${text.slice(0, 4000)}`);
   }
   writeFileSync(path, parts.join('\n\n'));
@@ -133,6 +137,8 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     // the video is still in the part that gets trimmed.
     await page.waitForTimeout(1500);
     await dismissTeachingTips(await awaitFrame(page)).catch(() => 0);
+    // A start page that opens as a dialog (a wizard) is maximized before the video begins.
+    if ((await expandDialogs(await awaitFrame(page)).catch(() => 0)) > 0) await awaitFrame(page).catch(() => {});
     await page.waitForTimeout(500);
     // Everything before the first step (loading, login landing) is trimmed from the final video.
     timing.trimStartMs = Date.now() - videoStart;
@@ -156,6 +162,11 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           await stageSafely(async () => {
             const tips = await dismissTeachingTips(frame);
             if (tips) entry.staging.push(`closed ${tips} tip(s)`);
+            // Dialogs that open later (a second wizard) are maximized too.
+            if (await expandDialogs(frame)) {
+              entry.staging.push('expanded dialog');
+              await awaitFrame(page).catch(() => {});
+            }
             const staged = await stage(page, frame, step, opts.hints, () => awaitFrame(page).catch(() => {}));
             const target: Locator | undefined = staged.target;
             const r = staged.report;

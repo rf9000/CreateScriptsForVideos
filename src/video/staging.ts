@@ -106,6 +106,21 @@ export async function visibility(target: Locator | undefined): Promise<Visibilit
 }
 
 /** Close Fluent teaching tips ("About bank accounts") that cover the page. */
+/**
+ * Maximizes an open dialog or wizard (the ↗ button in its header). A collapsed dialog cuts off
+ * columns and fields, and the cursor then points at controls the viewer can't see.
+ * Returns how many dialogs it expanded.
+ */
+export async function expandDialogs(frame: Frame): Promise<number> {
+  const buttons = frame.locator('[role=dialog]').filter({ visible: true })
+    .getByRole('button', { name: /^(expand|maximize)\b/i }).filter({ visible: true });
+  let expanded = 0;
+  for (let i = (await buttons.count().catch(() => 0)) - 1; i >= 0; i--) {
+    if (await buttons.nth(i).click().then(() => true, () => false)) expanded++;
+  }
+  return expanded;
+}
+
 export async function dismissTeachingTips(frame: Frame): Promise<number> {
   const close = frame.locator(
     '[class*="TeachingBubble"] button[aria-label="Close"], [class*="TeachingBubble"] .ms-TeachingBubble-closebutton',
