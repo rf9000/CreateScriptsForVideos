@@ -54,7 +54,7 @@ const NARRATION_GAP_MS = 400;
 /** Hold on the final state after the last narration. */
 const END_TAIL_MS = 1500;
 /** Quiet start on the first page, so the first narrated words don't land on the video's first frame. */
-export const LEAD_IN_MS = 1500;
+export const LEAD_IN_MS = 500;
 const TYPE_DELAY_MS = 70;
 const PASSIVE = new Set(['page-shown', 'page-closed', 'validate', 'wait']);
 
