@@ -24,7 +24,7 @@ function config(dir: string, retentionDays: number): AppConfig {
     openaiApiKey: '',
     videoLocale: 'en-US',
     videoHeaded: false,
-    continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
+    continiaBankingPath: './cb', continiaApiToken: '', continiaAuthMethod: 'api-token', anthropicApiKey: '',
     workspaceOutputDir: dir, pteOutputDir: dir, lspPluginPath: '',
     outputRetentionDays: retentionDays,
     costLogPath: '.state/cost-ledger.jsonl',

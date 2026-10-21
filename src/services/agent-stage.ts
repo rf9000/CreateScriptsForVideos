@@ -47,7 +47,11 @@ export function agentEnv(
     if (HIDDEN_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
     env[key] = value;
   }
-  env['CONTINIA_API_TOKEN'] = config.continiaApiToken;
+  // The CLI reads CONTINIA_AUTH_METHOD before anything else, so the agents' own continia calls
+  // use the same credentials as the pipeline's.
+  env['CONTINIA_AUTH_METHOD'] = config.continiaAuthMethod;
+  if (config.continiaAuthMethod === 'api-token') env['CONTINIA_API_TOKEN'] = config.continiaApiToken;
+  else delete env['CONTINIA_API_TOKEN'];
   // Set = API billing; empty = Claude Code login credentials.
   if (config.anthropicApiKey) env['ANTHROPIC_API_KEY'] = config.anthropicApiKey;
   return env;

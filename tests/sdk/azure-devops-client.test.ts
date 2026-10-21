@@ -35,6 +35,7 @@ function mockConfig(): AppConfig {
     videoHeaded: false,
     continiaBankingPath: './continia-banking',
     continiaApiToken: '',
+    continiaAuthMethod: 'api-token',
     anthropicApiKey: '',
     workspaceOutputDir: './output',
     pteOutputDir: './output',

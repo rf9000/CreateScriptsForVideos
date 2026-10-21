@@ -25,10 +25,19 @@ describe('createContiniaCli', () => {
     expect(exec.mock.calls[0]![0]).not.toContain('cont-token');
   });
 
-  test('leaves auth to the CLI defaults when no token is configured', async () => {
+  test('azure-ad: pins the method and passes no token', async () => {
     const exec = execReturning({ stdout: '{"id":"env-1","status":"Running"}' });
-    await createContiniaCli(testConfig({ continiaApiToken: '' }), exec).getEnvironment('env-1');
-    expect(exec.mock.calls[0]![0]).not.toContain('--auth-method');
+    await createContiniaCli(testConfig({ continiaApiToken: 'stale', continiaAuthMethod: 'azure-ad' }), exec).getEnvironment('env-1');
+    expect(exec.mock.calls[0]![0].slice(1, 3)).toEqual(['--auth-method', 'azure-ad']);
+    expect(exec.mock.calls[0]![2]['CONTINIA_API_TOKEN']).toBe(process.env['CONTINIA_API_TOKEN']);
+  });
+
+  test('a 401 says which credential to renew', async () => {
+    const exec = execReturning({ exitCode: 1, stderr: 'Error: GET https://x/profiles/bc_versions.json failed: 401' });
+    const token = await createContiniaCli(testConfig(), exec).listProfileVersions().catch((e) => String(e));
+    expect(token).toContain('renew CONTINIA_API_TOKEN');
+    const ad = await createContiniaCli(testConfig({ continiaAuthMethod: 'azure-ad' }), exec).listProfileVersions().catch((e) => String(e));
+    expect(ad).toContain('run `continia auth login`');
   });
 
   test('env start runs without --json', async () => {

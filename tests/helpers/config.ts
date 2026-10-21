@@ -17,6 +17,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     videoHeaded: false,
     continiaBankingPath: '/repos/banking',
     continiaApiToken: 'cont-token',
+    continiaAuthMethod: 'api-token',
     continiaCliPath: 'continia',
     envProfileId: 'profile-1',
     envLocalization: 'base',

@@ -3,8 +3,15 @@ set -e
 
 # Fix ownership of mounted/named volumes (they mount as root) then drop privileges.
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p /app/.state
+  mkdir -p /app/.state/continia
+  # continia's Azure AD session (~/.continia/auth.json, from `continia auth login`) lives on the
+  # state volume, so a rebuilt container keeps it.
+  if [ ! -L /home/claude/.continia ]; then
+    rm -rf /home/claude/.continia
+    ln -s /app/.state/continia /home/claude/.continia
+  fi
   chown -R claude:claude /app/output /app/.state
+  chown -h claude:claude /home/claude/.continia
   chown -R claude:claude /home/claude/.claude 2>/dev/null || true
 
   # continia-banking is mounted READ-ONLY — verify it's actually there before starting.

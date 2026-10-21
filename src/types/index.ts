@@ -22,6 +22,8 @@ export interface AppConfig {
   continiaBankingPath: string;
   /** API token for continia.exe (passed as the global --token option). */
   continiaApiToken: string;
+  /** How continia authenticates: the API token, or the cached Azure AD session (`continia auth login`). */
+  continiaAuthMethod: 'api-token' | 'azure-ad';
   /** Path or command name of the continia CLI (`continia` on PATH in Docker). */
   continiaCliPath: string;
   /** Pins the DemoPortal profile. Empty = derive it from continia-banking's app.json versions. */

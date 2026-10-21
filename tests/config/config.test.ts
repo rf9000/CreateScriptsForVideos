@@ -211,6 +211,13 @@ describe("loadConfig", () => {
       expect(loadConfig({ ...validEnv, COST_LOG_PATH: "/x/l.jsonl" }).costLogPath).toBe("/x/l.jsonl");
     });
 
+    it("picks the continia auth method: explicit, else api-token with a token, else azure-ad", () => {
+      expect(loadConfig({ ...validEnv, CONTINIA_API_TOKEN: "t" }).continiaAuthMethod).toBe("api-token");
+      expect(loadConfig({ ...validEnv, CONTINIA_API_TOKEN: "" }).continiaAuthMethod).toBe("azure-ad");
+      expect(loadConfig({ ...validEnv, CONTINIA_API_TOKEN: "t", CONTINIA_AUTH_METHOD: "azure-ad" }).continiaAuthMethod).toBe("azure-ad");
+      expect(() => loadConfig({ ...validEnv, CONTINIA_AUTH_METHOD: "oauth" })).toThrow("CONTINIA_AUTH_METHOD");
+    });
+
     it("reads LSP_PLUGIN_PATH", () => {
       const config = loadConfig({ ...validEnv, LSP_PLUGIN_PATH: "/plugins/lsp" });
       expect(config.lspPluginPath).toBe("/plugins/lsp");

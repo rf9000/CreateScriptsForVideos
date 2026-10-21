@@ -19,6 +19,9 @@ const envSchema = z.object({
   VIDEO_HEADED: z.enum(["true", "false"]).default("false"),
   CONTINIA_BANKING_PATH: z.string().default("./continia-banking"),
   CONTINIA_API_TOKEN: z.string().default(""),
+  // api-token uses CONTINIA_API_TOKEN; azure-ad uses the session from `continia auth login`.
+  // Unset: api-token when a token is configured, else azure-ad.
+  CONTINIA_AUTH_METHOD: z.enum(["api-token", "azure-ad"]).optional(),
   CONTINIA_CLI_PATH: z.string().default("continia"),
   CONTINIA_ENV_PROFILE_ID: z.string().default(""),
   CONTINIA_ENV_LOCALIZATION: z.string().default("base"),
@@ -123,6 +126,7 @@ export function loadConfig(
     videoHeaded: parsed.VIDEO_HEADED === "true",
     continiaBankingPath: parsed.CONTINIA_BANKING_PATH,
     continiaApiToken: parsed.CONTINIA_API_TOKEN,
+    continiaAuthMethod: parsed.CONTINIA_AUTH_METHOD ?? (parsed.CONTINIA_API_TOKEN ? "api-token" : "azure-ad"),
     continiaCliPath: parsed.CONTINIA_CLI_PATH,
     envProfileId: parsed.CONTINIA_ENV_PROFILE_ID,
     envLocalization: parsed.CONTINIA_ENV_LOCALIZATION,

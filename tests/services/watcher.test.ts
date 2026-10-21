@@ -19,6 +19,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     videoHeaded: false,
     continiaBankingPath: './continia-banking',
     continiaApiToken: '',
+    continiaAuthMethod: 'api-token',
     anthropicApiKey: '',
     workspaceOutputDir: './output',
     pteOutputDir: './output',

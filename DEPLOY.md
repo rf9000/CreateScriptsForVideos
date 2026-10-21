@@ -56,7 +56,11 @@ This mirrors the investigate tool's deployment. The differences, all because thi
    (see [AL language-server plugin](#al-language-server-plugin)).
 5. `cp CreateScriptsForVideos/.env.create-scripts.example .env.create-scripts` and fill in
    `AZURE_DEVOPS_PAT`, `CONTINIA_API_TOKEN`, `ANTHROPIC_API_KEY`, and (for `create video` items)
-   `OPENAI_API_KEY`. This file lives at the
+   `OPENAI_API_KEY`. For DemoPortal you can instead use Azure AD: set
+   `CONTINIA_AUTH_METHOD=azure-ad`, leave `CONTINIA_API_TOKEN` empty, start the container, and
+   sign in once with `docker compose exec -u claude create-scripts-for-videos continia auth login`
+   (device code). The session is saved on the `create-scripts-state` volume, survives rebuilds,
+   and refreshes itself; `continia auth status` shows whether it is still valid. This file lives at the
    team root next to `docker-compose.yml` (where `env_file:` resolves it), NOT inside the repo.
    The agent authenticates with the API key (API billing) — unlike the investigate tool, no
    host `~/.claude` OAuth mount is used, so there is nothing to re-authenticate.

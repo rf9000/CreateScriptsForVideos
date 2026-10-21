@@ -139,20 +139,25 @@ export function createContiniaCli(
     const json = opts.json ?? true;
     const cmd = [
       config.continiaCliPath,
-      // The token travels in the environment (not argv, which shows in process
-      // listings); pin api-token auth so a VS Code Azure AD setting can't win.
-      ...(config.continiaApiToken ? ['--auth-method', 'api-token'] : []),
+      // The method is pinned so a VS Code setting can't win. The token travels in the
+      // environment (not argv, which shows in process listings).
+      '--auth-method', config.continiaAuthMethod,
       ...args,
       ...(json ? ['--json'] : []),
     ];
     const label = `continia ${args.join(' ')}`;
-    const env = config.continiaApiToken
+    const env = config.continiaAuthMethod === 'api-token'
       ? { ...process.env, CONTINIA_API_TOKEN: config.continiaApiToken }
       : process.env;
     const result = await exec(cmd, COMMAND_TIMEOUT_MS, env, opts.cwd);
     if (result.exitCode !== 0) {
       const detail = (result.stderr.trim() || (opts.secret ? '' : result.stdout.trim())).slice(0, 500);
-      throw new ContiniaCliError(`${label} exited ${result.exitCode}: ${detail}`);
+      const hint = /\b401\b/.test(detail)
+        ? config.continiaAuthMethod === 'api-token'
+          ? ' (DemoPortal rejected the API token: renew CONTINIA_API_TOKEN, or switch to CONTINIA_AUTH_METHOD=azure-ad)'
+          : ' (DemoPortal rejected the Azure AD session: run `continia auth login` in the container)'
+        : '';
+      throw new ContiniaCliError(`${label} exited ${result.exitCode}: ${detail}${hint}`);
     }
     if (!json) return undefined;
     try {

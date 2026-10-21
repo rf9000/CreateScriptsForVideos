@@ -16,7 +16,7 @@ function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     openaiApiKey: '',
     videoLocale: 'en-US',
     videoHeaded: false,
-    continiaBankingPath: './cb', continiaApiToken: '', anthropicApiKey: '',
+    continiaBankingPath: './cb', continiaApiToken: '', continiaAuthMethod: 'api-token', anthropicApiKey: '',
     workspaceOutputDir: '/out', pteOutputDir: '/out', lspPluginPath: '',
     outputRetentionDays: 14,
     costLogPath: '.state/cost-ledger.jsonl',

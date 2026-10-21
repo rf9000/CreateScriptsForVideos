@@ -140,7 +140,12 @@ describe('agentEnv', () => {
       AZURE_DEVOPS_PAT: 'secret',
       AZURE_DEVOPS_ORG: 'org',
     });
-    expect(env).toEqual({ PATH: '/bin', CONTINIA_API_TOKEN: 'cont-token', ANTHROPIC_API_KEY: 'sk-1' });
+    expect(env).toEqual({ PATH: '/bin', CONTINIA_AUTH_METHOD: 'api-token', CONTINIA_API_TOKEN: 'cont-token', ANTHROPIC_API_KEY: 'sk-1' });
+  });
+
+  test("azure-ad: the agents' continia calls use the cached session, never a token", () => {
+    const env = agentEnv(testConfig({ continiaAuthMethod: 'azure-ad' }), { PATH: '/bin', CONTINIA_API_TOKEN: 'from-host' });
+    expect(env).toEqual({ PATH: '/bin', CONTINIA_AUTH_METHOD: 'azure-ad' });
   });
 
   test('leaves ANTHROPIC_API_KEY alone when none is configured', () => {
