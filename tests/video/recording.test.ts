@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { parse } from 'yaml';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { lintRecording, loadVideoInputs } from '../../src/video/recording.ts';
+import { decodeEntities, lintRecording, loadVideoInputs } from '../../src/video/recording.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
 const good: Recording = {
@@ -89,5 +89,18 @@ describe('recordings from BC\'s own recorder', () => {
 
   test('a recording that does not end on a link out still needs a validate step', () => {
     expect(lintRecording({ description: 'd', steps: real.steps.slice(0, 3) })).toContain('no validate step: the recording must prove the demo outcome');
+  });
+});
+
+describe('decodeEntities', () => {
+  test('restores escaped caption markup', () => {
+    expect(decodeEntities('Validate &lt;caption&gt;Code&lt;/caption&gt; &amp; more')).toBe('Validate <caption>Code</caption> & more');
+  });
+
+  test('loadVideoInputs decodes step descriptions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rec-'));
+    writeFileSync(join(dir, 'recording.yml'), 'description: d\nsteps:\n  - type: validate\n    description: Validate &lt;caption&gt;Code&lt;/caption&gt;\n');
+    expect(loadVideoInputs(dir).recording.steps[0]!.description).toBe('Validate <caption>Code</caption>');
+    rmSync(dir, { recursive: true, force: true });
   });
 });

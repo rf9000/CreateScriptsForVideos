@@ -63,10 +63,21 @@ export function lintRecording(rec: Recording): string[] {
 }
 
 /** Read recording.yml (required), recording.staging.yml and narration.yml (optional) from an item folder. */
+/** `&lt;caption&gt;` -> `<caption>` (and &amp; &quot; &#39;). */
+export function decodeEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 export function loadVideoInputs(dir: string): { recording: Recording; hints: StagingHints; narration: Narration } {
   const recordingPath = join(dir, 'recording.yml');
   if (!existsSync(recordingPath)) throw new Error(`recording.yml not found in ${dir}`);
   const recording = parse(readFileSync(recordingPath, 'utf-8')) as Recording;
+  // Some editors HTML-escape the <caption> markup; the cursor and staging read it from here.
+  for (const step of recording.steps ?? []) {
+    if (typeof step.description === 'string') step.description = decodeEntities(step.description);
+  }
 
   const hintsPath = join(dir, 'recording.staging.yml');
   const hints = existsSync(hintsPath) ? ((parse(readFileSync(hintsPath, 'utf-8')) as StagingHints) ?? {}) : {};
