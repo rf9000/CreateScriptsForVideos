@@ -143,6 +143,8 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
   mkdirSync(join(opts.outDir, 'shots'), { recursive: true });
   const browser = await chromium.launch({ headless: !opts.headed });
   const steps: StepLog[] = [];
+  // Names of icon-only buttons on the last page, so a missed Expand button shows its real name.
+  let iconButtons: string[] = [];
   const timing: RecordResult['timing'] = { trimStartMs: 0, steps: [] };
   let failedStep: number | undefined;
   let error: string | undefined;
@@ -251,6 +253,9 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
       }
     }
     if (!error) await page.waitForTimeout(waitAtEnd(Date.now() - videoStart, narrationEndsAt));
+    iconButtons = await (await awaitFrame(page).catch(() => page.mainFrame())).locator('button:visible').evaluateAll((els) =>
+      els.filter((e) => !(e.textContent ?? '').trim()).map((e) => e.getAttribute('aria-label') ?? e.getAttribute('title') ?? '').filter(Boolean),
+    ).catch(() => [] as string[]);
     await page.close();
     videoPath = await page.video()?.path();
     await context.close();
@@ -261,7 +266,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
   }
   // Per-step timings and staging notes, for diagnosing pauses and flicker without the video.
   try {
-    writeFileSync(join(opts.outDir, 'steps.json'), JSON.stringify({ trimStartMs: timing.trimStartMs, failedStep, error, steps }, null, 2));
+    writeFileSync(join(opts.outDir, 'steps.json'), JSON.stringify({ trimStartMs: timing.trimStartMs, failedStep, error, iconButtons, steps }, null, 2));
   } catch {
     // diagnostics only
   }

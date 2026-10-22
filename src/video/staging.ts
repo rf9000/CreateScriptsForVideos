@@ -114,7 +114,8 @@ export async function visibility(target: Locator | undefined): Promise<Visibilit
 export async function expandPages(frame: Frame): Promise<number> {
   // Dialogs, wizards and card/document pages all carry the same header button. Exact names only,
   // so FastTab headers and "Show more" never match.
-  const buttons = frame.getByRole('button', { name: /^(expand|maximize)( the page| page)?$/i }).filter({ visible: true });
+  // BC adds the keyboard shortcut to the name, e.g. "Expand (Ctrl+Shift+F12)".
+  const buttons = frame.getByRole('button', { name: /^(expand|maximize)( the page| page)?(\s*\(.*\))?$/i }).filter({ visible: true });
   let expanded = 0;
   for (let i = (await buttons.count().catch(() => 0)) - 1; i >= 0; i--) {
     if (await buttons.nth(i).click().then(() => true, () => false)) expanded++;
