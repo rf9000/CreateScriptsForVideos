@@ -105,24 +105,29 @@ export async function visibility(target: Locator | undefined): Promise<Visibilit
   return box.y >= EDGE_MARGIN && box.y + box.height <= VIEWPORT.height - EDGE_MARGIN ? 'in-view' : 'edge';
 }
 
-/** Close Fluent teaching tips ("About bank accounts") that cover the page. */
 /**
- * Maximizes an open dialog or wizard (the ↗ button in its header). A collapsed dialog cuts off
- * columns and fields, and the cursor then points at controls the viewer can't see.
- * Returns how many dialogs it expanded.
+ * Widens open pages and dialogs: the ↗ button in their header. On cards and documents BC calls it
+ * "Toggle wide layout" (tooltip "Show wide layout view"); dialogs and wizards may call it Expand or
+ * Maximize. A narrow page cuts off columns: line parts then scroll sideways for every field
+ * (flicker) and the cursor points at controls the viewer can't see. Only buttons that would widen
+ * are clicked, never one that would narrow again. Returns how many it clicked.
  */
 export async function expandPages(frame: Frame): Promise<number> {
-  // Dialogs, wizards and card/document pages all carry the same header button. Exact names only,
-  // so FastTab headers and "Show more" never match.
-  // BC adds the keyboard shortcut to the name, e.g. "Expand (Ctrl+Shift+F12)".
-  const buttons = frame.getByRole('button', { name: /^(expand|maximize)( the page| page)?(\s*\(.*\))?$/i }).filter({ visible: true });
+  const buttons = [
+    frame.locator('[title="Show wide layout view"]').filter({ visible: true }),
+    // Exact names only, so FastTab headers and "Show more" never match; BC may add a shortcut.
+    frame.getByRole('button', { name: /^(expand|maximize)( the page| page)?(\s*\(.*\))?$/i }).filter({ visible: true }),
+  ];
   let expanded = 0;
-  for (let i = (await buttons.count().catch(() => 0)) - 1; i >= 0; i--) {
-    if (await buttons.nth(i).click().then(() => true, () => false)) expanded++;
+  for (const set of buttons) {
+    for (let i = (await set.count().catch(() => 0)) - 1; i >= 0; i--) {
+      if (await set.nth(i).click().then(() => true, () => false)) expanded++;
+    }
   }
   return expanded;
 }
 
+/** Close Fluent teaching tips ("About bank accounts") that cover the page. */
 export async function dismissTeachingTips(frame: Frame): Promise<number> {
   const close = frame.locator(
     '[class*="TeachingBubble"] button[aria-label="Close"], [class*="TeachingBubble"] .ms-TeachingBubble-closebutton',
