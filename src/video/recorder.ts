@@ -21,6 +21,10 @@ export type StepLog = {
   cursor: 'found' | 'missing' | 'n/a';
   visibleBefore?: string;
   visibleAfter?: string;
+  /** What the field shows after an input step, to spot values that didn't stick. */
+  valueAfter?: string;
+  /** The field shows something other than the recording typed. */
+  valueMismatch?: boolean;
   staging: string[];
   typed: boolean;
   /** Time spent waiting for the previous narration before this step. */
@@ -77,6 +81,15 @@ export function sliceFor(rec: Recording, index: number): Recording {
 }
 
 /** Run cosmetic staging; a failure is noted on the step and swallowed. */
+/** "50" vs "50.00", "Fixed Amount" vs "fixed amount": the same value as BC shows it. */
+export function sameValue(shown: string, typed: unknown): boolean {
+  const a = shown.trim().toLowerCase();
+  const b = String(typed ?? '').trim().toLowerCase();
+  if (a === b) return true;
+  const num = (s: string) => Number(s.replace(/[\s,]/g, ''));
+  return a !== '' && b !== '' && !Number.isNaN(num(a)) && num(a) === num(b);
+}
+
 export async function stageSafely<T>(fn: () => Promise<T>, notes: string[]): Promise<T | undefined> {
   try {
     return await fn();
@@ -207,7 +220,12 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         }
         await awaitFrame(page).catch(() => {});
         if (!entry.error && !passive && step.type !== 'navigate' && step.type !== 'invoke') {
-          entry.visibleAfter = await visibility(await findTarget(await awaitFrame(page), step).catch(() => undefined));
+          const after = await findTarget(await awaitFrame(page), step).catch(() => undefined);
+          entry.visibleAfter = await visibility(after);
+          if (after && step.type === 'input') {
+            entry.valueAfter = await after.inputValue().catch(() => after.innerText()).catch(() => undefined);
+            if (entry.valueAfter !== undefined) entry.valueMismatch = !sameValue(entry.valueAfter, step.value);
+          }
         }
         await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
         // A failed step also keeps each frame's visible text and buttons, to diagnose without the image.

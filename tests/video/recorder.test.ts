@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { pauseAfterStep, sliceFor, stageSafely, waitAtEnd, waitBeforeStep } from '../../src/video/recorder.ts';
+import { pauseAfterStep, sameValue, sliceFor, stageSafely, waitAtEnd, waitBeforeStep } from '../../src/video/recorder.ts';
 import { errorText, startUrl, wizardMove } from '../../src/video/bc-session.ts';
 import type { Recording } from '../../src/video/recording.ts';
 
@@ -84,5 +84,17 @@ describe('wizardMove', () => {
     expect(wizardMove({ finish: true, next: true })).toBe('finish');
     expect(wizardMove({ finish: false, next: true })).toBe('next');
     expect(wizardMove({ finish: false, next: false })).toBe('stuck');
+  });
+});
+
+describe('sameValue', () => {
+  test('matches BC formatting of the typed value', () => {
+    expect(sameValue('50.00', '50')).toBe(true);
+    expect(sameValue('1,250.00', 1250)).toBe(true);
+    expect(sameValue('Fixed Amount', 'fixed amount')).toBe(true);
+  });
+  test('flags a value that did not stick', () => {
+    expect(sameValue('0', '50')).toBe(false);
+    expect(sameValue('', '50')).toBe(false);
   });
 });
