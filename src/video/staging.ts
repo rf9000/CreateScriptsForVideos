@@ -115,6 +115,8 @@ export async function visibility(target: Locator | undefined): Promise<Visibilit
 export async function expandPages(frame: Frame): Promise<number> {
   const buttons = [
     frame.locator('[title="Show wide layout view"]').filter({ visible: true }),
+    // The FactBox pane takes ~330 px from line grids; collapsed, fewer columns scroll out of view.
+    frame.locator('[title="Collapse the FactBox pane"]').filter({ visible: true }),
     // Exact names only, so FastTab headers and "Show more" never match; BC may add a shortcut.
     frame.getByRole('button', { name: /^(expand|maximize)( the page| page)?(\s*\(.*\))?$/i }).filter({ visible: true }),
   ];
