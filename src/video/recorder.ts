@@ -27,6 +27,8 @@ export type StepLog = {
   valueMismatch?: boolean;
   staging: string[];
   typed: boolean;
+  /** Time spent waiting for an input's field to become editable (e.g. after the field it depends on). */
+  editableWaitMs?: number;
   /** Time spent waiting for the previous narration before this step. */
   waitMs?: number;
   ms: number;
@@ -37,6 +39,8 @@ export type StepLog = {
  * it can't find (scrolled out, hidden) must not freeze the video for Playwright's 30 s default.
  */
 export const STAGING_ACTION_TIMEOUT_MS = 2500;
+/** Longest wait for an input's field to become editable before the step runs anyway. */
+export const EDITABLE_WAIT_MS = 3000;
 
 export type RecordOptions = {
   recording: Recording;
@@ -182,6 +186,17 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         const stepStart = Date.now() - videoStart;
         if (clip !== undefined) narrationEndsAt = stepStart + clip;
         const frame = await awaitFrame(page);
+        if (step.type === 'input') {
+          // A field that depends on the previous input (Amount after Split By) becomes editable only
+          // when BC has processed that input; typing earlier is dropped without an error. Waited
+          // before staging, so the visible typing lands in an editable field too.
+          const t1 = Date.now();
+          const field = await findTarget(frame, step).catch(() => undefined);
+          while (field && Date.now() - t1 < EDITABLE_WAIT_MS && !(await field.isEditable({ timeout: 500 }).catch(() => false))) {
+            await page.waitForTimeout(200);
+          }
+          entry.editableWaitMs = Date.now() - t1;
+        }
         if (!passive) {
           // Staging only frames the shot; if it fails, the step still runs.
           await stageSafely(async () => {
@@ -253,8 +268,10 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
       }
     }
     if (!error) await page.waitForTimeout(waitAtEnd(Date.now() - videoStart, narrationEndsAt));
-    iconButtons = await (await awaitFrame(page).catch(() => page.mainFrame())).locator('button:visible').evaluateAll((els) =>
-      els.filter((e) => !(e.textContent ?? '').trim()).map((e) => e.getAttribute('aria-label') ?? e.getAttribute('title') ?? '').filter(Boolean),
+    // Buttons in the page header strip (top 150 px), with every name BC gives them.
+    iconButtons = await (await awaitFrame(page).catch(() => page.mainFrame())).locator('button:visible, [role=button]:visible').evaluateAll((els) =>
+      els.filter((e) => e.getBoundingClientRect().top < 150).map((e) =>
+        [e.getAttribute('aria-label'), e.getAttribute('title'), (e.textContent ?? '').trim()].filter(Boolean).join(' / ')).filter(Boolean),
     ).catch(() => [] as string[]);
     await page.close();
     videoPath = await page.video()?.path();

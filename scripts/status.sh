@@ -15,5 +15,5 @@ grep -v "^\s*$" "$OUT/resume.log" 2>/dev/null | head -12
 if [ -f "$OUT/video/steps.json" ]; then
   echo "== icon buttons on the last page: $(jq -r '(.iconButtons // []) | join(" | ")' "$OUT/video/steps.json")"
   echo "== steps ($OUT/video/steps.json)"
-  jq -r '.steps[] | "\(.index) \(.type) \(.ms)ms wait=\(.waitMs // 0) \(if .valueAfter != null then "value=\(.valueAfter)\(if .valueMismatch then " MISMATCH" else "" end)" else "" end) \(.staging | join("; ")) \(.error // "")"' "$OUT/video/steps.json"
+  jq -r '.steps[] | "\(.index) \(.type) \(.ms)ms wait=\(.waitMs // 0) editable=\(.editableWaitMs // "-") \(if .valueAfter != null then "value=\(.valueAfter)\(if .valueMismatch then " MISMATCH" else "" end)" else "" end) \(.staging | join("; ")) \(.error // "")"' "$OUT/video/steps.json"
 fi
