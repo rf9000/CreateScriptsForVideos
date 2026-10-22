@@ -315,9 +315,9 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
       }
     }
     if (!error) await page.waitForTimeout(waitAtEnd(Date.now() - videoStart, narrationEndsAt));
-    // Buttons in the page header strip (top 150 px), with every name BC gives them.
+    // Buttons in the page header and action bar (top 260 px, the FactBox toggle included), with every name BC gives them.
     iconButtons = await (await awaitFrame(page).catch(() => page.mainFrame())).locator('button:visible, [role=button]:visible').evaluateAll((els) =>
-      els.filter((e) => e.getBoundingClientRect().top < 150).map((e) =>
+      els.filter((e) => e.getBoundingClientRect().top < 260).map((e) =>
         [e.getAttribute('aria-label'), e.getAttribute('title'), (e.textContent ?? '').trim()].filter(Boolean).join(' / ')).filter(Boolean),
     ).catch(() => [] as string[]);
     await page.close();
