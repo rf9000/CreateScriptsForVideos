@@ -223,7 +223,12 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           const after = await findTarget(await awaitFrame(page), step).catch(() => undefined);
           entry.visibleAfter = await visibility(after);
           if (after && step.type === 'input') {
-            entry.valueAfter = await after.inputValue().catch(() => after.innerText()).catch(() => undefined);
+            // A dropdown (enum field) shows its selected option; innerText would list every option.
+            entry.valueAfter = await after
+              .evaluate((el) => (el instanceof HTMLSelectElement ? el.options[el.selectedIndex]?.text ?? '' : undefined))
+              .then((selected) => selected ?? after.inputValue())
+              .catch(() => after.innerText())
+              .catch(() => undefined);
             if (entry.valueAfter !== undefined) entry.valueMismatch = !sameValue(entry.valueAfter, step.value);
           }
         }
