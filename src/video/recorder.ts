@@ -186,6 +186,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         const stepStart = Date.now() - videoStart;
         if (clip !== undefined) narrationEndsAt = stepStart + clip;
         const frame = await awaitFrame(page);
+        let typedTarget: Locator | undefined;
         if (step.type === 'input') {
           // A field that depends on the previous input (Amount after Split By) becomes editable only
           // when BC has processed that input; typing earlier is dropped without an error. Waited
@@ -226,14 +227,28 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
               entry.cursor = 'found';
             }
             if (target) entry.typed = await typeVisibly(target, step, TYPE_DELAY_MS).catch(() => false);
+            if (entry.typed) typedTarget = target;
           }, entry.staging);
         }
 
-        try {
-          const result = await play(page, sliceFor(opts.recording, index));
-          entry.error = errorText(result.error) ?? errorText(result.fileErrors);
-        } catch (err) {
-          entry.error = `recorder: ${String(err)}`;
+        // A value typed visibly is committed the way a user does it, by leaving the field (blur, not
+        // Tab, so the current row stays). If it stuck, BC's engine must not write the same field again:
+        // two writers raced, and the client's pending edit could win with an empty value.
+        let committedByTyping = false;
+        if (typedTarget) {
+          await typedTarget.evaluate((el) => (el as HTMLElement).blur()).catch(() => {});
+          await awaitFrame(page).catch(() => {});
+          const shown = await typedTarget.inputValue().catch(() => undefined);
+          committedByTyping = shown !== undefined && sameValue(shown, step.value);
+          entry.staging.push(committedByTyping ? 'typed and committed' : `typed, but the field shows "${shown ?? '?'}"; engine plays the step`);
+        }
+        if (!committedByTyping) {
+          try {
+            const result = await play(page, sliceFor(opts.recording, index));
+            entry.error = errorText(result.error) ?? errorText(result.fileErrors);
+          } catch (err) {
+            entry.error = `recorder: ${String(err)}`;
+          }
         }
         await awaitFrame(page).catch(() => {});
         if (!entry.error && !passive && step.type !== 'navigate' && step.type !== 'invoke') {
