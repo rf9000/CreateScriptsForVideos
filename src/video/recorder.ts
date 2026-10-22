@@ -3,7 +3,7 @@ import type { Locator, Page } from 'playwright';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { animateClick, injectCursor } from './cursor.ts';
-import { dismissTeachingTips, expandDialogs, findTarget, stage, typeVisibly, visibility } from './staging.ts';
+import { dismissTeachingTips, expandPages, findTarget, stage, typeVisibly, visibility } from './staging.ts';
 import { awaitFrame, errorText, openSession, play } from './bc-session.ts';
 import type { Recording, StagingHints } from './recording.ts';
 
@@ -23,8 +23,16 @@ export type StepLog = {
   visibleAfter?: string;
   staging: string[];
   typed: boolean;
+  /** Time spent waiting for the previous narration before this step. */
+  waitMs?: number;
   ms: number;
 };
+
+/**
+ * Cap for each Playwright action while framing a step. Staging only polishes the shot; a field
+ * it can't find (scrolled out, hidden) must not freeze the video for Playwright's 30 s default.
+ */
+export const STAGING_ACTION_TIMEOUT_MS = 2500;
 
 export type RecordOptions = {
   recording: Recording;
@@ -133,12 +141,13 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     });
     const videoStart = videoStartedAt;
     await injectCursor(page);
+    page.setDefaultTimeout(STAGING_ACTION_TIMEOUT_MS);
     // Teaching tips ("About bank accounts") pop up shortly after a page loads; close them while
     // the video is still in the part that gets trimmed.
     await page.waitForTimeout(1500);
     await dismissTeachingTips(await awaitFrame(page)).catch(() => 0);
     // A start page that opens as a dialog (a wizard) is maximized before the video begins.
-    if ((await expandDialogs(await awaitFrame(page)).catch(() => 0)) > 0) await awaitFrame(page).catch(() => {});
+    if ((await expandPages(await awaitFrame(page)).catch(() => 0)) > 0) await awaitFrame(page).catch(() => {});
     await page.waitForTimeout(500);
     // Everything before the first step (loading, login landing) is trimmed from the final video.
     timing.trimStartMs = Date.now() - videoStart;
@@ -153,6 +162,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         // The narration starts with the step's visuals (cursor, typing), not after them.
         const clip = opts.holds.get(index);
         const wait = waitBeforeStep(clip !== undefined, Date.now() - videoStart, narrationEndsAt);
+        entry.waitMs = wait;
         if (wait > 0) await page.waitForTimeout(wait);
         const stepStart = Date.now() - videoStart;
         if (clip !== undefined) narrationEndsAt = stepStart + clip;
@@ -163,8 +173,8 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
             const tips = await dismissTeachingTips(frame);
             if (tips) entry.staging.push(`closed ${tips} tip(s)`);
             // Dialogs that open later (a second wizard) are maximized too.
-            if (await expandDialogs(frame)) {
-              entry.staging.push('expanded dialog');
+            if (await expandPages(frame)) {
+              entry.staging.push('expanded page');
               await awaitFrame(page).catch(() => {});
             }
             const staged = await stage(page, frame, step, opts.hints, () => awaitFrame(page).catch(() => {}));
@@ -225,6 +235,12 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
     error = error ?? `recorder: ${String(err)}`;
   } finally {
     await browser.close();
+  }
+  // Per-step timings and staging notes, for diagnosing pauses and flicker without the video.
+  try {
+    writeFileSync(join(opts.outDir, 'steps.json'), JSON.stringify({ trimStartMs: timing.trimStartMs, failedStep, error, steps }, null, 2));
+  } catch {
+    // diagnostics only
   }
   return { ok: error === undefined, videoPath, failedStep, error, timing, steps };
 }
