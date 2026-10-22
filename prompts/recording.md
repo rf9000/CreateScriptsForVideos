@@ -8,8 +8,7 @@ yourself; you write two files and prove them with the check tool.
 ### 1. `recording.yml`
 
 Write it fresh from the current recording script. If a `recording.yml` or `narration.yml` from an
-earlier run is in the folder, replace it; don't carry over its values. Write the markup in
-descriptions as plain `<caption>`, not HTML-escaped.
+earlier run is in the folder, replace it; don't carry over its values.
 
 Use only these step shapes:
 
