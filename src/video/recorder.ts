@@ -255,7 +255,10 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
               await animateClick(page, onField ? box.x + box.width - 28 : box.x + box.width / 2, box.y + box.height / 2);
               entry.cursor = 'found';
             }
-            if (target) entry.typed = await typeVisibly(target, step, TYPE_DELAY_MS).catch(() => false);
+            // Grid cells (lines) are left to BC's engine: a value typed there and blurred only shows,
+            // it isn't saved, and the next step on the row wipes it (Fixed Amount 50 -> empty).
+            const inGrid = step.target?.some((t) => t['repeater']) ?? false;
+            if (target && !inGrid) entry.typed = await typeVisibly(target, step, TYPE_DELAY_MS).catch(() => false);
             if (entry.typed) typedTarget = target;
           }, entry.staging);
         }
