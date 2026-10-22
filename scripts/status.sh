@@ -15,5 +15,10 @@ grep -v "^\s*$" "$OUT/resume.log" 2>/dev/null | head -12
 if [ -f "$OUT/video/steps.json" ]; then
   echo "== icon buttons on the last page: $(jq -r '(.iconButtons // []) | join(" | ")' "$OUT/video/steps.json")"
   echo "== steps ($OUT/video/steps.json)"
-  jq -r '.steps[] | "\(.index) \(.type) \(.ms)ms wait=\(.waitMs // 0) editable=\(.editableWaitMs // "-") \(if .valueAfter != null then "value=\(.valueAfter)\(if .valueMismatch then " MISMATCH" else "" end)" else "" end) \(.staging | join("; ")) \(.error // "")"' "$OUT/video/steps.json"
+  jq -r '.steps[] | "\(.index) \(.type) \(.ms)ms wait=\(.waitMs // 0) editable=\(.editableWaitMs // "-") stage/play/after=\(.phaseMs.staging // "-")/\(.phaseMs.play // "-")/\(.phaseMs.after // "-") \(if .valueAfter != null then "value=\(.valueAfter)\(if .valueMismatch then " MISMATCH" else "" end)" else "" end) \(.staging | join("; ")) \(.error // "")"' "$OUT/video/steps.json"
+fi
+# Grid targets in detail (row picked, cell position, horizontal scroll): status.sh <id> grid
+if [ "${2:-}" = "grid" ] && [ -f "$OUT/video/steps.json" ]; then
+  echo "== grid targets"
+  jq -c '.steps[] | select(.gridTarget) | {i: .index, g: .gridTarget}' "$OUT/video/steps.json"
 fi

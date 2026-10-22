@@ -27,6 +27,10 @@ export type StepLog = {
   valueMismatch?: boolean;
   staging: string[];
   typed: boolean;
+  /** Where the time went: framing the shot, BC's replay, and the read-back afterwards. */
+  phaseMs?: { staging: number; play: number; after: number };
+  /** For a target in a grid: its row, cell position and the grid's horizontal scroll. */
+  gridTarget?: Record<string, unknown>;
   /** Time spent waiting for an input's field to become editable (e.g. after the field it depends on). */
   editableWaitMs?: number;
   /** Time spent waiting for the previous narration before this step. */
@@ -92,6 +96,29 @@ export function sameValue(shown: string, typed: unknown): boolean {
   if (a === b) return true;
   const num = (s: string) => Number(s.replace(/[\s,]/g, ''));
   return a !== '' && b !== '' && !Number.isNaN(num(a)) && num(a) === num(b);
+}
+
+/** Row and cell facts for a grid target, to see which row staging picked and whether it is in view. */
+async function describeGridTarget(target: Locator): Promise<Record<string, unknown> | undefined> {
+  return target.evaluate((el) => {
+    const row = el.closest('tr, [role=row]');
+    const cell = el.closest('td, [role=gridcell]') ?? el;
+    const grid = el.closest('.ms-nav-grid-horizontal-container');
+    const scroller = grid ? Array.from(grid.querySelectorAll('div')).find((d) => d.scrollWidth - d.clientWidth > 10) : undefined;
+    const box = cell.getBoundingClientRect();
+    const view = scroller?.getBoundingClientRect();
+    const attrs = (e: Element | null) => (e ? Object.fromEntries(Array.from(e.attributes).filter((a) => /^(class|aria-|data-|tabindex)/.test(a.name)).map((a) => [a.name, a.value.slice(0, 120)])) : null);
+    return {
+      row: attrs(row),
+      rowIndexInBody: row?.parentElement ? Array.from(row.parentElement.children).indexOf(row) : -1,
+      rowsInBody: row?.parentElement?.children.length ?? 0,
+      cell: { x: Math.round(box.x), w: Math.round(box.width), y: Math.round(box.y) },
+      gridView: view ? { x: Math.round(view.x), w: Math.round(view.width) } : null,
+      scrollLeft: scroller?.scrollLeft ?? null,
+      scrollWidth: scroller?.scrollWidth ?? null,
+      focusedInRow: !!row && row.contains(document.activeElement),
+    };
+  }).catch(() => undefined);
 }
 
 export async function stageSafely<T>(fn: () => Promise<T>, notes: string[]): Promise<T | undefined> {
@@ -198,6 +225,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
           }
           entry.editableWaitMs = Date.now() - t1;
         }
+        const tStaging = Date.now();
         if (!passive) {
           // Staging only frames the shot; if it fails, the step still runs.
           await stageSafely(async () => {
@@ -219,6 +247,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
               ...(r.revealed ? ['reveal'] : []),
             );
             entry.visibleBefore = await visibility(target);
+            if (target && step.target?.some((t) => t['repeater'])) entry.gridTarget = await describeGridTarget(target);
             const box = target ? await target.boundingBox().catch(() => null) : null;
             if (box) {
               // On fields, rest the cursor near the right end so it doesn't cover the typed text.
@@ -234,6 +263,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
         // A value typed visibly is committed the way a user does it, by leaving the field (blur, not
         // Tab, so the current row stays). If it stuck, BC's engine must not write the same field again:
         // two writers raced, and the client's pending edit could win with an empty value.
+        const tPlay = Date.now();
         let committedByTyping = false;
         if (typedTarget) {
           await typedTarget.evaluate((el) => (el as HTMLElement).blur()).catch(() => {});
@@ -250,6 +280,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
             entry.error = `recorder: ${String(err)}`;
           }
         }
+        const tAfter = Date.now();
         await awaitFrame(page).catch(() => {});
         if (!entry.error && !passive && step.type !== 'navigate' && step.type !== 'invoke') {
           const after = await findTarget(await awaitFrame(page), step).catch(() => undefined);
@@ -264,6 +295,7 @@ export async function recordDemo(opts: RecordOptions): Promise<RecordResult> {
             if (entry.valueAfter !== undefined) entry.valueMismatch = !sameValue(entry.valueAfter, step.value);
           }
         }
+        entry.phaseMs = { staging: tPlay - tStaging, play: tAfter - tPlay, after: Date.now() - tAfter };
         await page.screenshot({ path: join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.png`) });
         // A failed step also keeps each frame's visible text and buttons, to diagnose without the image.
         if (entry.error) await dumpFrames(page, join(opts.outDir, 'shots', `step-${String(index).padStart(2, '0')}.txt`)).catch(() => {});
