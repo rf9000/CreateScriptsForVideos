@@ -121,7 +121,14 @@ export async function expandPages(frame: Frame): Promise<number> {
   let expanded = 0;
   for (const set of buttons) {
     for (let i = (await set.count().catch(() => 0)) - 1; i >= 0; i--) {
-      if (await set.nth(i).click().then(() => true, () => false)) expanded++;
+      // A page under another (the list behind an open card) keeps its own button; clicking it
+      // can't land and waits out the action timeout on every step. Only the topmost one counts.
+      const onTop = await set.nth(i).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return !!hit && (el === hit || el.contains(hit));
+      }).catch(() => false);
+      if (onTop && (await set.nth(i).click().then(() => true, () => false))) expanded++;
     }
   }
   return expanded;
